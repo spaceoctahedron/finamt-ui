@@ -746,5 +746,22 @@
     "error_load": "Could not reach server.",
     "error_create": "Could not create project.",
     "error_delete": "Could not delete project."
+  },
+  "kyc": {
+    "title_kyc": "Know Your Customer",
+    "title_kys": "Know Your Supplier",
+    "sub_kyc": "Customers — revenue relationships mapped by location",
+    "sub_kys": "Suppliers — expense relationships mapped by location",
+    "tab_kyc": "Customers",
+    "tab_kys": "Suppliers",
+    "geocoding": "Geocoding addresses",
+    "transactions": "transactions",
+    "no_addresses": "No address data available for this selection.",
+    "legend_dot_size": "Dot size",
+    "legend_log_scale": "log scale (amount)",
+    "legend_points": "Locations",
+    "legend_total": "Mapped total",
+    "legend_unmapped": "{{count}} transaction(s) not on map",
+    "legend_unmapped_reason": "no address data"
   }
 }

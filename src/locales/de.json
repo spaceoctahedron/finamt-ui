@@ -745,5 +745,22 @@
     "error_load": "Server nicht erreichbar.",
     "error_create": "Projekt konnte nicht erstellt werden.",
     "error_delete": "Projekt konnte nicht gelöscht werden."
+  },
+  "kyc": {
+    "title_kyc": "Know Your Customer",
+    "title_kys": "Know Your Supplier",
+    "sub_kyc": "Kunden — Umsatzbeziehungen nach Standort",
+    "sub_kys": "Lieferanten — Ausgabebeziehungen nach Standort",
+    "tab_kyc": "Kunden",
+    "tab_kys": "Lieferanten",
+    "geocoding": "Adressen werden geocodiert",
+    "transactions": "Transaktionen",
+    "no_addresses": "Für diese Auswahl sind keine Adressdaten verfügbar.",
+    "legend_dot_size": "Punktgröße",
+    "legend_log_scale": "Logarithmische Skala (Betrag)",
+    "legend_points": "Orte",
+    "legend_total": "Kartiertes Gesamt",
+    "legend_unmapped": "{{count}} Transaktion(en) nicht auf Karte",
+    "legend_unmapped_reason": "keine Adressdaten"
   }
 }

@@ -11,6 +11,7 @@ import { GewStPanel } from "./returns/GewStPanel";
 import { KStPanel } from "./returns/KStPanel";
 import { JahresabschlussPanel } from "./returns/JahresabschlussPanel";
 import { ReturnsOverview } from "./returns/ReturnsOverview";
+import { KycKysPanel } from "./KycKysPanel";
 
 type Props = { receipts: Receipt[]; allReceipts: Receipt[]; period: PeriodFilter; taxpayer?: TaxpayerProfile | null; onEditTaxpayer?: () => void; onUpdateTaxpayer?: (patch: Partial<TaxpayerProfile>) => void; apiBase?: string; dbPath?: string | null; };
 
@@ -236,6 +237,9 @@ export default function Dashboard({ receipts, allReceipts, period, taxpayer, onE
           </div>
         )}
       </div>
+
+      {/* KYC / KYS */}
+      <KycKysPanel receipts={allReceipts} apiBase={apiBase} dbPath={dbPath} />
 
       {/* STEUERERKLÄRUNGEN — ÜBERSICHT */}
       <ReturnsOverview
