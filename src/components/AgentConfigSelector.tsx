@@ -32,6 +32,11 @@ type ModelPreset = { id: string; label: string; icon: React.ReactNode };
 
 const MODEL_PRESETS: ModelPreset[] = [
   {
+    id: "mistral:7b",
+    label: "mistral:7b",
+    icon: <IconMistral className="w-3.5 h-3.5" />,
+  },
+  {
     id: "qwen2.5:7b-instruct-q4_K_M",
     label: "qwen2.5:7b",
     icon: <IconQwen className="w-3.5 h-3.5" />,
@@ -41,15 +46,10 @@ const MODEL_PRESETS: ModelPreset[] = [
     label: "qwen2.5:14b",
     icon: <IconQwen className="w-3.5 h-3.5" />,
   },
-  {
-    id: "mistral:7b",
-    label: "mistral:7b",
-    icon: <IconMistral className="w-3.5 h-3.5" />,
-  },
 ];
 
 const DEFAULT_CFG: AgentConfig = {
-  agent_model:       "qwen2.5:7b-instruct-q4_K_M",
+  agent_model:       "mistral:7b",
   agent_timeout:     60,
   agent_num_ctx:     4096,
   agent_max_retries: 2,
@@ -101,7 +101,8 @@ export default function AgentConfigSelector({ apiBase }: Props) {
   const [customModel, setCustomModel] = useState(false);
   const [customModelVal, setCustomModelVal] = useState("");
 
-  const ref = useRef<HTMLDivElement>(null);
+  const ref     = useRef<HTMLDivElement>(null);
+  const loaded  = useRef(false);
 
   // ── Close on outside click ──────────────────────────────────────────────
   useEffect(() => {
@@ -145,7 +146,7 @@ export default function AgentConfigSelector({ apiBase }: Props) {
     }
   };
 
-  useEffect(() => { if (open) load(); }, [open]);
+  useEffect(() => { if (open && !loaded.current) { loaded.current = true; load(); } }, [open]);
 
   // ── Save config ─────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -196,10 +197,6 @@ export default function AgentConfigSelector({ apiBase }: Props) {
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div ref={ref} className="relative flex items-center gap-1.5">
-
-      {/* ── Static label ── */}
-      <IconAgent className="w-3.5 h-3.5 shrink-0 text-red-500" />
-      <span className="text-red-500 text-xs font-medium select-none">Agent Config</span>
 
       {/* ── Trigger pill ── */}
       <button
