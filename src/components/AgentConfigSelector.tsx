@@ -12,7 +12,6 @@ export type AgentConfig = {
   agent_timeout:     number;
   agent_num_ctx:     number;
   agent_max_retries: number;
-  ollama_base_url:   string;
   ocr_language:      string;
   ocr_timeout:       number;
   ocr_preprocess:    boolean;
@@ -41,11 +40,6 @@ const MODEL_PRESETS: ModelPreset[] = [
     label: "qwen2.5:7b",
     icon: <IconQwen className="w-3.5 h-3.5" />,
   },
-  {
-    id: "qwen2.5:14b-instruct",
-    label: "qwen2.5:14b",
-    icon: <IconQwen className="w-3.5 h-3.5" />,
-  },
 ];
 
 const DEFAULT_CFG: AgentConfig = {
@@ -53,7 +47,6 @@ const DEFAULT_CFG: AgentConfig = {
   agent_timeout:     60,
   agent_num_ctx:     4096,
   agent_max_retries: 2,
-  ollama_base_url:   "http://localhost:11434",
   ocr_language:      "german",
   ocr_timeout:       60,
   ocr_preprocess:    true,
@@ -126,7 +119,6 @@ export default function AgentConfigSelector({ apiBase }: Props) {
         agent_timeout:     data.agent_timeout      ?? DEFAULT_CFG.agent_timeout,
         agent_num_ctx:     data.agent_num_ctx      ?? DEFAULT_CFG.agent_num_ctx,
         agent_max_retries: data.agent_max_retries  ?? DEFAULT_CFG.agent_max_retries,
-        ollama_base_url:   data.ollama_base_url    ?? DEFAULT_CFG.ollama_base_url,
         ocr_language:      data.ocr_language       ?? DEFAULT_CFG.ocr_language,
         ocr_timeout:       data.ocr_timeout        ?? DEFAULT_CFG.ocr_timeout,
         ocr_preprocess:    data.ocr_preprocess     ?? DEFAULT_CFG.ocr_preprocess,
@@ -167,7 +159,6 @@ export default function AgentConfigSelector({ apiBase }: Props) {
         agent_timeout:     data.agent_timeout      ?? payload.agent_timeout,
         agent_num_ctx:     data.agent_num_ctx      ?? payload.agent_num_ctx,
         agent_max_retries: data.agent_max_retries  ?? payload.agent_max_retries,
-        ollama_base_url:   data.ollama_base_url    ?? payload.ollama_base_url,
         ocr_language:      data.ocr_language       ?? payload.ocr_language,
         ocr_timeout:       data.ocr_timeout        ?? payload.ocr_timeout,
         ocr_preprocess:    data.ocr_preprocess     ?? payload.ocr_preprocess,
@@ -328,11 +319,6 @@ export default function AgentConfigSelector({ apiBase }: Props) {
                   label="FINAMT_AGENT_MAX_RETRIES"
                   value={draft.agent_max_retries}
                   onChange={(v) => setField("agent_max_retries", v)}
-                />
-                <TextField
-                  label="FINAMT_OLLAMA_BASE_URL"
-                  value={draft.ollama_base_url}
-                  onChange={(v) => setField("ollama_base_url", v)}
                 />
               </div>
             </section>
