@@ -59,6 +59,10 @@ interface AggEntry {
   country: string | null | undefined;
 }
 
+interface ResolvedEntry extends AggEntry {
+  coords: [number, number] | null;
+}
+
 // ---------------------------------------------------------------------------
 // Panel
 // ---------------------------------------------------------------------------
@@ -76,6 +80,8 @@ export function KycKysPanel({
   const [points, setPoints] = useState<MapPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [unmapped, setUnmapped] = useState<{ count: number; amount: number }>({ count: 0, amount: 0 });
+  const [resolved, setResolved] = useState<ResolvedEntry[]>([]);
+  const [showManage, setShowManage] = useState(false);
 
   // Persistent cache loaded from DB — stored as ref so it doesn't trigger re-renders
   const dbCache = useRef<Record<string, [number, number] | null>>({});
@@ -179,6 +185,7 @@ export function KycKysPanel({
     let unmappedAmount = 0;
     setPoints([]);
     setUnmapped({ count: 0, amount: 0 });
+    setResolved([]);
 
     (async () => {
       await waitForCache();
@@ -190,6 +197,7 @@ export function KycKysPanel({
         const [coords, usedNominatim] = await geocode(entry.city, entry.postcode, entry.country);
 
         if (cancelled) return;
+        setResolved((prev) => [...prev, { ...entry, coords }]);
         if (coords) {
           const existing = running.find(
             (p) => Math.abs(p.lat - coords[0]) < 0.01 && Math.abs(p.lon - coords[1]) < 0.01,
@@ -327,6 +335,87 @@ export function KycKysPanel({
               &nbsp;—&nbsp;{t("kyc.legend_unmapped_reason")}
             </span>
           )}
+          {resolved.length > 0 && (
+            <button
+              onClick={() => setShowManage(true)}
+              className="text-black/50 hover:text-black underline underline-offset-2 cursor-pointer font-mono text-[11px] transition-colors"
+            >
+              {t("kyc.manage_link")}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Manage modal */}
+      {showManage && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40"
+          onClick={() => setShowManage(false)}
+        >
+          <div
+            className="bg-white border-2 border-amber-400 rounded shadow-xl flex flex-col w-[700px] max-w-[95vw] max-h-[80vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-amber-200">
+              <h4 className="text-sm font-black uppercase tracking-wider text-black">
+                {tab === "kyc" ? t("kyc.title_kyc") : t("kyc.title_kys")} — {t("kyc.manage_title")}
+              </h4>
+              <button
+                onClick={() => setShowManage(false)}
+                className="text-black/50 hover:text-black font-black text-lg leading-none cursor-pointer"
+              >✕</button>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-y-auto flex-1">
+              <table className="w-full text-[11px] font-mono">
+                <thead className="sticky top-0 bg-amber-50 border-b border-amber-200">
+                  <tr>
+                    <th className="text-left px-4 py-2 text-black font-black uppercase tracking-wider w-[30%]">{t("kyc.col_name")}</th>
+                    <th className="text-left px-4 py-2 text-black font-black uppercase tracking-wider w-[35%]">{t("kyc.col_address")}</th>
+                    <th className="text-right px-4 py-2 text-black font-black uppercase tracking-wider w-[15%]">{t("kyc.col_amount")}</th>
+                    <th className="text-left px-4 py-2 text-black font-black uppercase tracking-wider w-[20%]">{t("kyc.col_coords")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...resolved]
+                    .sort((a, b) => (a.coords ? 0 : 1) - (b.coords ? 0 : 1) || b.amount - a.amount)
+                    .map((entry, i) => {
+                      const addrParts = [entry.city, entry.postcode, entry.country].filter(Boolean);
+                      return (
+                        <tr key={i} className={`border-b border-amber-100 ${entry.coords ? "" : "bg-amber-50/60"}` }>
+                          <td className="px-4 py-2 text-black font-bold truncate max-w-0">
+                            <span className="block truncate" title={entry.name}>{entry.name}</span>
+                          </td>
+                          <td className="px-4 py-2 text-black/70 truncate max-w-0">
+                            <span className="block truncate" title={addrParts.join(", ") || "—"}>
+                              {addrParts.join(", ") || <span className="text-black/30">—</span>}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-right text-black font-bold">{fmt(entry.amount)}</td>
+                          <td className="px-4 py-2">
+                            {entry.coords ? (
+                              <span className="text-black/50">
+                                {entry.coords[0].toFixed(3)}, {entry.coords[1].toFixed(3)}
+                              </span>
+                            ) : (
+                              <span className="text-amber-600 font-bold">{t("kyc.col_no_coords")}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal footer */}
+            <div className="px-5 py-2.5 border-t border-amber-200 text-[11px] font-mono text-black/50 flex justify-between items-center">
+              <span>{resolved.length} {t("kyc.manage_entries")} · {resolved.filter((e) => e.coords).length} {t("kyc.manage_mapped")} · {resolved.filter((e) => !e.coords).length} {t("kyc.manage_unmapped")}</span>
+              <button onClick={() => setShowManage(false)} className="text-black/50 hover:text-black underline cursor-pointer">{t("kyc.manage_close")}</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

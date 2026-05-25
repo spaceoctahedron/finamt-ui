@@ -761,6 +761,17 @@
     "legend_points": "Orte",
     "legend_total": "Kartiertes Gesamt",
     "legend_unmapped": "{{count}} Transaktion(en) nicht auf Karte",
-    "legend_unmapped_reason": "keine Adressdaten"
+    "legend_unmapped_reason": "keine Adressdaten",
+    "manage_link": "verwalten",
+    "manage_title": "Adressübersicht",
+    "manage_entries": "Einträge",
+    "manage_mapped": "kartiert",
+    "manage_unmapped": "nicht kartiert",
+    "manage_close": "schließen",
+    "col_name": "Name",
+    "col_address": "Adresse",
+    "col_amount": "Betrag",
+    "col_coords": "Koordinaten",
+    "col_no_coords": "keine Geodaten"
   }
 }

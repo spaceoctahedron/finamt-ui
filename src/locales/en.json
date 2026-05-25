@@ -762,6 +762,17 @@
     "legend_points": "Locations",
     "legend_total": "Mapped total",
     "legend_unmapped": "{{count}} transaction(s) not on map",
-    "legend_unmapped_reason": "no address data"
+    "legend_unmapped_reason": "no address data",
+    "manage_link": "manage",
+    "manage_title": "Address Overview",
+    "manage_entries": "entries",
+    "manage_mapped": "mapped",
+    "manage_unmapped": "unmapped",
+    "manage_close": "close",
+    "col_name": "Name",
+    "col_address": "Address",
+    "col_amount": "Amount",
+    "col_coords": "Coordinates",
+    "col_no_coords": "no geodata"
   }
 }
