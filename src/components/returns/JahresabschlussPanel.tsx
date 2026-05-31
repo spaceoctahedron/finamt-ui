@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import { useTranslation } from "react-i18next";
-import { IconChevronDown, IconFilePdf } from "../../constants/icons";
+import { IconChevronDown, IconFilePdf, IconCheck, IconClose, IconInfo } from "../../constants/icons";
 import type { Receipt, PeriodFilter, TaxpayerProfile } from "../Sidebar";
 import { CASHFLOW_ONLY_CATS } from "../Sidebar";
 import { LawLink, ElsterTip } from "./shared";
@@ -831,12 +831,12 @@ td:last-child{text-align:right;white-space:nowrap}
                 : "bg-red-50 border-red-300 text-red-800"
             }`}>
               {bilanz.ausgeglichen
-                ? "✓ " + t("dashboard.jab_balanced")
-                : `✗ ${t("dashboard.jab_unbalanced", { diff: fE(Math.abs(bilanz.differenz)) })}`}
+                ? <span className="flex items-center gap-1"><IconCheck className="w-3.5 h-3.5 shrink-0" />{t("dashboard.jab_balanced")}</span>
+                : <span className="flex items-center gap-1"><IconClose className="w-3.5 h-3.5 shrink-0" />{t("dashboard.jab_unbalanced", { diff: fE(Math.abs(bilanz.differenz)) })}</span>}
             </div>
 
-            <p className="text-[10px] text-black font-mono mt-3 leading-relaxed">
-              ℹ {t("dashboard.jab_disclaimer")}
+            <p className="text-[10px] text-black font-mono mt-3 leading-relaxed flex items-start gap-1">
+              <IconInfo className="w-3 h-3 shrink-0 mt-px" /> {t("dashboard.jab_disclaimer")}
             </p>
           </div>
 
@@ -1092,7 +1092,7 @@ td:last-child{text-align:right;white-space:nowrap}
                   </button>
                 </div>
                 {xbrlError && (
-                  <p className="text-[10px] font-mono text-red-700 font-bold">✗ {xbrlError}</p>
+                  <p className="text-[10px] font-mono text-red-700 font-bold flex items-start gap-1"><IconClose className="w-3.5 h-3.5 shrink-0 mt-px" /> {xbrlError}</p>
                 )}
               </div>
 
@@ -1135,14 +1135,14 @@ td:last-child{text-align:right;white-space:nowrap}
                 </div>
 
                 {submitError && (
-                  <p className="text-[10px] font-mono text-red-700 font-bold">✗ {submitError}</p>
+                  <p className="text-[10px] font-mono text-red-700 font-bold flex items-start gap-1"><IconClose className="w-3.5 h-3.5 shrink-0 mt-px" /> {submitError}</p>
                 )}
                 {validateMsg && (
                   <p className="text-[10px] font-mono text-green-700 font-bold">{validateMsg}</p>
                 )}
                 {transferticket && (
-                  <p className="text-[10px] font-mono text-green-700 font-bold">
-                    ✓ {t("dashboard.jab_ebilanz_ticket")}: {transferticket}
+                  <p className="text-[10px] font-mono text-green-700 font-bold flex items-center gap-1">
+                    <IconCheck className="w-3.5 h-3.5 shrink-0" /> {t("dashboard.jab_ebilanz_ticket")}: {transferticket}
                   </p>
                 )}
               </div>

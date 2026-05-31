@@ -253,7 +253,7 @@ export default function Dashboard({ receipts, allReceipts, period, taxpayer, onE
       <UStVAPanel receipts={receipts} period={period} />
 
       {/* UMSATZSTEUERERKLÄRUNG */}
-      <UStErkPanel allReceipts={allReceipts} period={period} />
+      <UStErkPanel allReceipts={allReceipts} period={period} apiBase={apiBase} dbPath={dbPath} taxpayer={taxpayer} />
 
       {/* GEWERBESTEUERERKLÄRUNG */}
       <GewStPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} />

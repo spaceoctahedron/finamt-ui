@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { IconChevronDown } from "../../constants/icons";
+import { IconChevronDown, IconArrowUp } from "../../constants/icons";
 import type { TaxpayerProfile } from "../Sidebar";
 
 // ---------------------------------------------------------------------------
@@ -285,8 +285,8 @@ export function ReturnsOverview({ taxpayer, onUpdateTaxpayer, apiBase = "", dbPa
 
           {/* ── Hint when start year set but frequency missing ─────────── */}
           {startYear && !ustvFreq && (
-            <p className="text-xs font-mono text-black/40">
-              ⬆ UStVA-Rhythmus wählen, um die vollständige Übersicht anzuzeigen.
+            <p className="text-xs font-mono text-black/40 flex items-center gap-1">
+              <IconArrowUp className="w-3.5 h-3.5 shrink-0" /> UStVA-Rhythmus wählen, um die vollständige Übersicht anzuzeigen.
             </p>
           )}
 

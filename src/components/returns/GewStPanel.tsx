@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { IconChevronDown } from "../../constants/icons";
+import { IconChevronDown, IconInfo } from "../../constants/icons";
 import type { Receipt, PeriodFilter, TaxpayerProfile } from "../Sidebar";
 import { CASHFLOW_ONLY_CATS } from "../Sidebar";
 import { LawLink } from "./shared";
@@ -190,8 +190,8 @@ export function GewStPanel({ allReceipts, period, taxpayer, onEditTaxpayer }: {
             </div>
           )}
 
-          <p className="text-[10px] text-black font-mono leading-relaxed">
-            ℹ {t("dashboard.gewst_disclaimer")}
+          <p className="text-[10px] text-black font-mono leading-relaxed flex items-start gap-1">
+            <IconInfo className="w-3 h-3 shrink-0 mt-px" /> {t("dashboard.gewst_disclaimer")}
           </p>
         </div>
       )}

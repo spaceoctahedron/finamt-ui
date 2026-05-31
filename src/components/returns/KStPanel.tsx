@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { IconChevronDown } from "../../constants/icons";
+import { IconChevronDown, IconInfo } from "../../constants/icons";
 import type { Receipt, PeriodFilter, TaxpayerProfile } from "../Sidebar";
 import { CASHFLOW_ONLY_CATS } from "../Sidebar";
 import { LawLink, ElsterTip } from "./shared";
@@ -656,8 +656,8 @@ export function KStPanel({ allReceipts, period, taxpayer, onEditTaxpayer }: {
             </div>
           </div>
 
-          <p className="text-[10px] text-black font-mono leading-relaxed">
-            ℹ {t("dashboard.kst_disclaimer")}
+          <p className="text-[10px] text-black font-mono leading-relaxed flex items-start gap-1">
+            <IconInfo className="w-3 h-3 shrink-0 mt-px" /> {t("dashboard.kst_disclaimer")}
           </p>
         </div>
       )}

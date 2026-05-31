@@ -22,6 +22,10 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": "http://127.0.0.1:8000",
+      "/tax": "http://127.0.0.1:8000",
+      "/taxpayer": "http://127.0.0.1:8000",
+      "/receipts": "http://127.0.0.1:8000",
+      "/settings": "http://127.0.0.1:8000",
     },
   },
 })
