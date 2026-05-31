@@ -8,7 +8,7 @@ import { ElsterTip, VatRow, LawLink } from "./shared";
 // ---------------------------------------------------------------------------
 // USt panel — Umsatzsteuerjahreserklärung · § 18 UStG · USt 2A
 // ---------------------------------------------------------------------------
-export function UStErkPanel({
+export function UStPanel({
   allReceipts,
   period,
   apiBase = "",
@@ -43,10 +43,10 @@ export function UStErkPanel({
   const [submitError, setSubmitError]       = useState<string | null>(null);
   const [validateMsg, setValidateMsg]       = useState<string | null>(null);
   const [transferticket, setTransferticket] = useState<string | null>(null);
-  const [usteXml, setUsteXml]               = useState<string | null>(null);
-  const [usteXmlOpen, setUsteXmlOpen]       = useState(false);
-  const [usteXmlCopied, setUsteXmlCopied]   = useState(false);
-  const [usteXmlLoading, setUsteXmlLoading] = useState(false);
+  const [ustXml, setUsteXml]               = useState<string | null>(null);
+  const [ustXmlOpen, setUsteXmlOpen]       = useState(false);
+  const [ustXmlCopied, setUsteXmlCopied]   = useState(false);
+  const [ustXmlLoading, setUsteXmlLoading] = useState(false);
 
   // Load stored cert / settings from the E-Bilanz shared endpoints on mount
   useEffect(() => {
@@ -90,7 +90,7 @@ export function UStErkPanel({
     finally { setCertUploading(false); }
   }
 
-  async function previewUsteXml() {
+  async function previewUstXml() {
     setUsteXmlLoading(true);
     setSubmitError(null);
     let certDataB64: string | undefined;
@@ -128,7 +128,7 @@ export function UStErkPanel({
     }
   }
 
-  async function callUsteEndpoint(validateOnly: boolean) {
+  async function callUstEndpoint(validateOnly: boolean) {
     const isSend = !validateOnly;
     if (isSend) { setSubmitting(true); setTransferticket(null); }
     else        { setValidating(true);  setValidateMsg(null); }
@@ -427,15 +427,15 @@ export function UStErkPanel({
                 <div className="flex gap-2 pt-0.5 flex-wrap">
                   <button
                     className="border border-black rounded px-3 py-1 text-[11px] font-bold bg-white hover:bg-amber-100 transition-colors disabled:opacity-50 flex items-center gap-1"
-                    onClick={previewUsteXml}
-                    disabled={usteXmlLoading || submitting}
+                    onClick={previewUstXml}
+                    disabled={ustXmlLoading || submitting}
                   >
                     <IconXml className="w-3.5 h-3.5" />
-                    {usteXmlLoading ? "Lade…" : "XML anzeigen"}
+                    {ustXmlLoading ? "Lade…" : "XML anzeigen"}
                   </button>
                   <button
                     className="border border-amber-400 rounded px-3 py-1 text-[11px] font-bold bg-white hover:bg-amber-100 transition-colors disabled:opacity-50"
-                    onClick={() => callUsteEndpoint(true)}
+                    onClick={() => callUstEndpoint(true)}
                     disabled={validating || submitting}
                   >
                     {validating ? "Prüfe…" : "Validieren"}
@@ -446,7 +446,7 @@ export function UStErkPanel({
                         ? "bg-amber-400 hover:bg-amber-500 text-black border border-amber-500"
                         : "bg-black hover:bg-amber-500 text-white hover:text-black border border-black"
                     }`}
-                    onClick={() => callUsteEndpoint(false)}
+                    onClick={() => callUstEndpoint(false)}
                     disabled={submitting || validating}
                   >
                     {submitting ? "Wird übermittelt…" : useTest ? "Test-Übermittlung" : "An Finanzamt senden"}
@@ -476,7 +476,7 @@ export function UStErkPanel({
       )}
 
       {/* ── USt XML Preview Modal ────────────────────────────────────── */}
-      {usteXmlOpen && usteXml && (
+      {ustXmlOpen && ustXml && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="relative bg-white border-2 border-black rounded w-[90vw] max-w-4xl h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-4 py-2 border-b-2 border-black bg-amber-50">
@@ -484,7 +484,7 @@ export function UStErkPanel({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(usteXml).then(() => {
+                    navigator.clipboard.writeText(ustXml).then(() => {
                       setUsteXmlCopied(true);
                       setTimeout(() => setUsteXmlCopied(false), 2000);
                     });
@@ -492,11 +492,11 @@ export function UStErkPanel({
                   className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded border border-black hover:bg-amber-100 transition-colors"
                 >
                   <IconCopy className="w-3.5 h-3.5" />
-                  {usteXmlCopied ? "Kopiert" : "Kopieren"}
+                  {ustXmlCopied ? "Kopiert" : "Kopieren"}
                 </button>
                 <button
                   onClick={() => {
-                    const blob = new Blob([usteXml], { type: "application/xml" });
+                    const blob = new Blob([ustXml], { type: "application/xml" });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");
                     a.href = url;
@@ -518,7 +518,7 @@ export function UStErkPanel({
               </div>
             </div>
             <pre className="flex-1 overflow-auto p-4 text-[10px] font-mono text-black leading-relaxed whitespace-pre select-all">
-              {usteXml}
+              {ustXml}
             </pre>
           </div>
         </div>

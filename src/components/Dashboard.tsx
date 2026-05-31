@@ -6,7 +6,7 @@ import type { Receipt, PeriodFilter, TaxpayerProfile } from "./Sidebar";
 import { CATEGORY_META, CASHFLOW_ONLY_CATS, fmt, displayName } from "./Sidebar";
 import type { CategoryMeta } from "./Sidebar";
 import { UStVAPanel } from "./returns/UStVAPanel";
-import { UStErkPanel } from "./returns/UStErkPanel";
+import { UStPanel } from "./returns/UStPanel";
 import { GewStPanel } from "./returns/GewStPanel";
 import { KStPanel } from "./returns/KStPanel";
 import { JahresabschlussPanel } from "./returns/JahresabschlussPanel";
@@ -253,7 +253,7 @@ export default function Dashboard({ receipts, allReceipts, period, taxpayer, onE
       <UStVAPanel receipts={receipts} period={period} />
 
       {/* UMSATZSTEUERERKLÄRUNG */}
-      <UStErkPanel allReceipts={allReceipts} period={period} apiBase={apiBase} dbPath={dbPath} taxpayer={taxpayer} />
+      <UStPanel allReceipts={allReceipts} period={period} apiBase={apiBase} dbPath={dbPath} taxpayer={taxpayer} />
 
       {/* GEWERBESTEUERERKLÄRUNG */}
       <GewStPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} />
