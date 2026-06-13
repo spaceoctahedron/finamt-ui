@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Icon } from "@iconify/react";
 import { IconChevronDown } from "../constants/icons";
 import { useTranslation } from "react-i18next";
-import type { Receipt, PeriodFilter, TaxpayerProfile } from "./Sidebar";
-import { CATEGORY_META, CASHFLOW_ONLY_CATS, fmt, displayName } from "./Sidebar";
+import type { Receipt, PeriodFilter, TaxpayerProfile, ElsterSettings } from "./Sidebar";
+import { CATEGORY_META, CASHFLOW_ONLY_CATS, fmt, displayName, EMPTY_ELSTER } from "./Sidebar";
 import type { CategoryMeta } from "./Sidebar";
 import { UStVAPanel } from "./returns/UStVAPanel";
 import { UStPanel } from "./returns/UStPanel";
@@ -13,7 +13,7 @@ import { JahresabschlussPanel } from "./returns/JahresabschlussPanel";
 import { ReturnsOverview } from "./returns/ReturnsOverview";
 import { KycKysPanel } from "./KycKysPanel";
 
-type Props = { receipts: Receipt[]; allReceipts: Receipt[]; period: PeriodFilter; taxpayer?: TaxpayerProfile | null; onEditTaxpayer?: () => void; onUpdateTaxpayer?: (patch: Partial<TaxpayerProfile>) => void; apiBase?: string; dbPath?: string | null; };
+type Props = { receipts: Receipt[]; allReceipts: Receipt[]; period: PeriodFilter; taxpayer?: TaxpayerProfile | null; elsterSettings?: ElsterSettings; onEditTaxpayer?: () => void; onUpdateTaxpayer?: (patch: Partial<TaxpayerProfile>) => void; apiBase?: string; dbPath?: string | null; };
 
 // ---------------------------------------------------------------------------
 // Stat card
@@ -126,7 +126,7 @@ function CategoryChart({ title, totals, receipts }: {
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-export default function Dashboard({ receipts, allReceipts, period, taxpayer, onEditTaxpayer, onUpdateTaxpayer, apiBase = "", dbPath }: Props) {
+export default function Dashboard({ receipts, allReceipts, period, taxpayer, elsterSettings = EMPTY_ELSTER, onEditTaxpayer, onUpdateTaxpayer, apiBase = "", dbPath }: Props) {
   const { t } = useTranslation();
 
   // ── Period label ────────────────────────────────────────────────────────
@@ -253,7 +253,7 @@ export default function Dashboard({ receipts, allReceipts, period, taxpayer, onE
       <UStVAPanel receipts={receipts} period={period} />
 
       {/* UMSATZSTEUERERKLÄRUNG */}
-      <UStPanel allReceipts={allReceipts} period={period} apiBase={apiBase} dbPath={dbPath} taxpayer={taxpayer} />
+      <UStPanel allReceipts={allReceipts} period={period} apiBase={apiBase} dbPath={dbPath} taxpayer={taxpayer} elsterSettings={elsterSettings} />
 
       {/* GEWERBESTEUERERKLÄRUNG */}
       <GewStPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} />
@@ -262,7 +262,7 @@ export default function Dashboard({ receipts, allReceipts, period, taxpayer, onE
       <KStPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} />
 
       {/* Jahresabschluss */}
-      <JahresabschlussPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} apiBase={apiBase} dbPath={dbPath} />
+      <JahresabschlussPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} apiBase={apiBase} dbPath={dbPath} elsterSettings={elsterSettings} />
 
       {/* Tax return tiles */}
       <div className="grid grid-cols-2 gap-3">

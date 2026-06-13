@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { IconChevronDown, IconSend, IconEye, IconEyeOff, IconCheck, IconClose, IconWarning, IconInfo, IconXml, IconCopy, IconDownload } from "../../constants/icons";
-import type { Receipt, PeriodFilter, TaxpayerProfile } from "../Sidebar";
-import { fmt } from "../Sidebar";
-import { ElsterTip, VatRow, LawLink } from "./shared";
+import { IconChevronDown, IconSend, IconCheck, IconClose, IconWarning, IconXml, IconCopy, IconDownload, IconInfo } from "../../constants/icons";
+import type { Receipt, PeriodFilter, TaxpayerProfile, ElsterSettings } from "../Sidebar";
+import { fmt, EMPTY_ELSTER } from "../Sidebar";
+import { LawLink, ElsterTip, VatRow } from "./shared";
+import { bundeslandKzFromState, finanzamtNrFromSteuernummer } from "../../utils/steuernummer";
 
 // ---------------------------------------------------------------------------
 // USt panel — Umsatzsteuerjahreserklärung · § 18 UStG · USt 2A
@@ -14,29 +15,20 @@ export function UStPanel({
   apiBase = "",
   dbPath,
   taxpayer,
+  elsterSettings = EMPTY_ELSTER,
 }: {
-  allReceipts:  Receipt[];
-  period:       PeriodFilter;
-  apiBase?:     string;
-  dbPath?:      string | null;
-  taxpayer?:    TaxpayerProfile | null;
+  allReceipts:      Receipt[];
+  period:           PeriodFilter;
+  apiBase?:         string;
+  dbPath?:          string | null;
+  taxpayer?:        TaxpayerProfile | null;
+  elsterSettings?:  ElsterSettings;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   // ── ELSTER submission state ────────────────────────────────────────
   const [elsterOpen, setElsterOpen]         = useState(false);
-  const [certFile, setCertFile]             = useState<File | null>(null);
-  const certFileRef                         = useRef<HTMLInputElement>(null);
-  const [certSaved, setCertSaved]           = useState(false);
-  const [certUploading, setCertUploading]   = useState(false);
-  const [certPassword, setCertPassword]     = useState("");
-  const [certPinSaved, setCertPinSaved]     = useState(false);
-  const [showPin, setShowPin]               = useState(false);
-  const [herstellerId, setHerstellerId]     = useState("");
-  const [steuernummer, setSteuernummer]     = useState("");
-  const [finanzamtNr, setFinanzamtNr]       = useState("");
-  const [bundeslandKz, setBundeslandKz]     = useState("");
   const [useTest, setUseTest]               = useState(true);
   const [submitting, setSubmitting]         = useState(false);
   const [validating, setValidating]         = useState(false);
@@ -48,56 +40,18 @@ export function UStPanel({
   const [ustXmlCopied, setUsteXmlCopied]   = useState(false);
   const [ustXmlLoading, setUsteXmlLoading] = useState(false);
 
-  // Load stored cert / settings from the E-Bilanz shared endpoints on mount
+  // Derived ELSTER params from taxpayer profile
+  const derivedBundeslandKz = bundeslandKzFromState(taxpayer?.state);
+  const derivedFinanzamtNr  = finanzamtNrFromSteuernummer(taxpayer?.tax_number, taxpayer?.state);
+
+  // Reset action state on project change
   useEffect(() => {
-    setCertSaved(false); setCertFile(null); setCertPassword(""); setCertPinSaved(false);
-    setHerstellerId(""); setSteuernummer(""); setFinanzamtNr(""); setBundeslandKz("");
     setTransferticket(null); setSubmitError(null); setValidateMsg(null);
-    if (!apiBase) return;
-    const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
-    fetch(`${apiBase}/tax/ebilanz/settings${qs}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (!d) return;
-        if (d.hersteller_id) setHerstellerId(d.hersteller_id);
-        if (d.cert_pin)      { setCertPassword(d.cert_pin); setCertPinSaved(true); }
-      })
-      .catch(() => {});
-    fetch(`${apiBase}/tax/ebilanz/cert${qs}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setCertSaved(d.stored); })
-      .catch(() => {});
   }, [apiBase, dbPath]);
-
-  // Pre-fill from taxpayer profile
-  useEffect(() => {
-    if (taxpayer?.tax_number) setSteuernummer(taxpayer.tax_number);
-  }, [taxpayer]);
-
-  async function uploadCert(file: File) {
-    setCertUploading(true);
-    try {
-      const ab  = await file.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
-      const qs  = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
-      const res = await fetch(`${apiBase}/tax/ebilanz/cert${qs}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cert_data_b64: b64 }),
-      });
-      if (res.ok) setCertSaved(true);
-    } catch { /* retry */ }
-    finally { setCertUploading(false); }
-  }
 
   async function previewUstXml() {
     setUsteXmlLoading(true);
     setSubmitError(null);
-    let certDataB64: string | undefined;
-    if (certFile) {
-      const ab = await certFile.arrayBuffer();
-      certDataB64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
-    }
     try {
       const qs  = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
       const res = await fetch(`${apiBase}/tax/uste/xml${qs}`, {
@@ -105,12 +59,11 @@ export function UStPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           year,
-          steuernummer:  steuernummer  || undefined,
-          bundesland_kz: bundeslandKz  || undefined,
-          finanzamt_nr:  finanzamtNr   || undefined,
-          hersteller_id: herstellerId  || undefined,
-          cert_data_b64: certDataB64,
-          cert_password: certPassword  || undefined,
+          steuernummer:  taxpayer?.tax_number    || undefined,
+          bundesland_kz: derivedBundeslandKz     || undefined,
+          finanzamt_nr:  derivedFinanzamtNr      || undefined,
+          hersteller_id: elsterSettings.hersteller_id || undefined,
+          cert_password: elsterSettings.cert_pin      || undefined,
           use_test:      useTest,
         }),
       });
@@ -134,12 +87,6 @@ export function UStPanel({
     else        { setValidating(true);  setValidateMsg(null); }
     setSubmitError(null);
 
-    let certDataB64: string | undefined;
-    if (certFile) {
-      const ab  = await certFile.arrayBuffer();
-      certDataB64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
-    }
-
     try {
       const qs  = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
       const res = await fetch(`${apiBase}/tax/uste/submit${qs}`, {
@@ -147,12 +94,11 @@ export function UStPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           year,
-          steuernummer:  steuernummer || undefined,
-          bundesland_kz: bundeslandKz || undefined,
-          finanzamt_nr:  finanzamtNr  || undefined,
-          hersteller_id: herstellerId || undefined,
-          cert_data_b64: certDataB64,
-          cert_password: certPassword || undefined,
+          steuernummer:  taxpayer?.tax_number    || undefined,
+          bundesland_kz: derivedBundeslandKz     || undefined,
+          finanzamt_nr:  derivedFinanzamtNr      || undefined,
+          hersteller_id: elsterSettings.hersteller_id || undefined,
+          cert_password: elsterSettings.cert_pin      || undefined,
           use_test:      useTest,
           validate_only: validateOnly,
         }),
@@ -310,101 +256,19 @@ export function UStPanel({
             {elsterOpen && (
               <div className="px-3 pb-3 flex flex-col gap-2.5 text-[11px]">
 
-                {/* Steuernummer */}
-                <label className="flex flex-col gap-0.5">
-                  <span className="font-bold text-black">Steuernummer</span>
-                  <input
-                    className="border border-amber-300 rounded px-2 py-1 font-mono text-[11px] bg-white"
-                    value={steuernummer}
-                    onChange={e => setSteuernummer(e.target.value)}
-                    placeholder={taxpayer?.tax_number ?? "37/539/50531"}
-                  />
-                </label>
-
-                {/* Finanzamt-Nr + Länderkennzeichen */}
-                <div className="flex gap-2">
-                  <label className="flex flex-col gap-0.5 flex-1">
-                    <span className="font-bold text-black">Finanzamtsnr. (4-stlg.)</span>
-                    <input
-                      className="border border-amber-300 rounded px-2 py-1 font-mono text-[11px] bg-white"
-                      value={finanzamtNr}
-                      onChange={e => setFinanzamtNr(e.target.value)}
-                      placeholder="3752"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-0.5 w-24">
-                    <span className="font-bold text-black">Länder-Kz.</span>
-                    <input
-                      className="border border-amber-300 rounded px-2 py-1 font-mono text-[11px] bg-white"
-                      value={bundeslandKz}
-                      onChange={e => setBundeslandKz(e.target.value)}
-                      placeholder="11"
-                    />
-                  </label>
+                {/* Settings summary */}
+                <div className="text-[10px] text-black/60 font-mono grid grid-cols-2 gap-x-4 gap-y-0.5 bg-white border border-amber-200 rounded px-2 py-1.5">
+                  <span>Steuernr.: <strong className="text-black">{taxpayer?.tax_number || <em>nicht gesetzt</em>}</strong></span>
+                  <span>Finanzamt: <strong className="text-black">{derivedFinanzamtNr || <em>—</em>}</strong></span>
+                  <span>Länder-Kz.: <strong className="text-black">{derivedBundeslandKz || <em>—</em>}</strong></span>
+                  <span>Hersteller-ID: <strong className="text-black">{elsterSettings.hersteller_id || <em>nicht gesetzt</em>}</strong></span>
+                  <span className="col-span-2">Zertifikat: <strong className="text-black">{elsterSettings.cert_saved ? "✓ gespeichert" : <em>nicht hochgeladen</em>}</strong></span>
                 </div>
-
-                {/* Hersteller-ID */}
-                <label className="flex flex-col gap-0.5">
-                  <span className="font-bold text-black">Hersteller-ID</span>
-                  <input
-                    className="border border-amber-300 rounded px-2 py-1 font-mono text-[11px] bg-white"
-                    value={herstellerId}
-                    onChange={e => setHerstellerId(e.target.value)}
-                    placeholder="Hersteller-ID"
-                  />
-                </label>
-
-                {/* Certificate upload */}
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-bold text-black">
-                    ELSTER-Zertifikat (.pfx)
-                    {certSaved && <span className="ml-1.5 text-black font-normal flex items-center gap-0.5 inline-flex"><IconCheck className="w-3 h-3" /> gespeichert</span>}
-                  </span>
-                  <div className="flex gap-2 items-center">
-                    <input
-                      type="file"
-                      accept=".pfx,.p12"
-                      ref={certFileRef}
-                      className="hidden"
-                      onChange={async e => {
-                        const f = e.target.files?.[0];
-                        if (!f) return;
-                        setCertFile(f);
-                        await uploadCert(f);
-                      }}
-                    />
-                    <button
-                      className="border border-amber-400 rounded px-2 py-0.5 text-[11px] font-bold bg-white hover:bg-amber-100 transition-colors"
-                      onClick={() => certFileRef.current?.click()}
-                      disabled={certUploading}
-                    >
-                      {certUploading ? "Wird hochgeladen…" : certFile ? certFile.name : "Zertifikat wählen…"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Certificate PIN */}
-                <label className="flex flex-col gap-0.5">
-                  <span className="font-bold text-black">
-                    Zertifikat-PIN
-                    {certPinSaved && <span className="ml-1.5 text-black font-normal flex items-center gap-0.5 inline-flex"><IconCheck className="w-3 h-3" /> gespeichert</span>}
-                  </span>
-                  <div className="flex gap-1 items-center">
-                    <input
-                      type={showPin ? "text" : "password"}
-                      className="border border-amber-300 rounded px-2 py-1 font-mono text-[11px] bg-white flex-1"
-                      value={certPassword}
-                      onChange={e => setCertPassword(e.target.value)}
-                      autoComplete="current-password"
-                    />
-                    <button
-                      className="text-[10px] px-1.5 py-0.5 border border-amber-300 rounded bg-white hover:bg-amber-100"
-                      onClick={() => setShowPin(v => !v)}
-                    >
-                      {showPin ? <IconEyeOff className="w-3.5 h-3.5" /> : <IconEye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </label>
+                {(!elsterSettings.cert_saved || !elsterSettings.hersteller_id || !taxpayer?.tax_number) && (
+                  <p className="text-[10px] text-black font-mono">
+                    <IconInfo className="w-3 h-3 inline mr-0.5" /> ELSTER-Daten unvollständig — bitte im Unternehmensprofil (<strong>Bearbeiten</strong>) ergänzen.
+                  </p>
+                )}
 
                 {/* Test mode toggle */}
                 <label className="flex items-center gap-2 cursor-pointer select-none">

@@ -4,7 +4,8 @@ import i18n from "../i18n";
 import { Icon } from "@iconify/react";
 import { CATEGORY_META, CASHFLOW_ONLY_CATS, CATEGORY_SUBCATEGORIES } from "../constants";
 import type { CategoryMeta } from "../constants";
-import { IconChevronDown, IconDelete, IconSpinner } from "../constants/icons";
+import { IconChevronDown, IconDelete, IconSpinner, IconCheck, IconEye, IconEyeOff } from "../constants/icons";
+import { bundeslandKzFromState, finanzamtNrFromSteuernummer, toFederal13, is13Digit } from "../utils/steuernummer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,6 +54,23 @@ export type TaxpayerProfile = {
   // Returns tracking
   ustva_frequency?: "monthly" | "quarterly" | null;
   starting_year?:   number | null;
+};
+
+/** ELSTER / ERiC credentials shared across all tax return panels. */
+export type ElsterSettings = {
+  hersteller_id: string;
+  cert_pin:      string;
+  cert_saved:    boolean;
+  elster_id:     string;
+  eric_home:     string;
+};
+
+export const EMPTY_ELSTER: ElsterSettings = {
+  hersteller_id: "",
+  cert_pin:      "",
+  cert_saved:    false,
+  elster_id:     "",
+  eric_home:     "",
 };
 
 export type ReceiptItem = {
@@ -174,11 +192,13 @@ function matchesRecent(r: Receipt, w: RecentWindow): boolean {
 // Taxpayer data modal
 // ---------------------------------------------------------------------------
 
-export function TaxpayerModal({ initial, onSave, onClear, onClose }: {
-  initial:  TaxpayerProfile | null;
-  onSave:   (tp: TaxpayerProfile) => void;
-  onClear:  () => void;
-  onClose:  () => void;
+export function TaxpayerModal({ initial, onSave, onClear, onClose, apiBase = "", dbPath }: {
+  initial:   TaxpayerProfile | null;
+  onSave:    (tp: TaxpayerProfile) => void;
+  onClear:   () => void;
+  onClose:   () => void;
+  apiBase?:  string;
+  dbPath?:   string | null;
 }) {
   const { t } = useTranslation();
   const [form, setForm] = useState<TaxpayerProfile>({
@@ -207,7 +227,65 @@ export function TaxpayerModal({ initial, onSave, onClear, onClose }: {
     starting_year: initial?.starting_year != null ? String(initial.starting_year) : "",
   });
   const [companyOpen, setCompanyOpen] = useState(false);
+  const [elsterOpen, setElsterOpen]   = useState(false);
   const [logo, setLogo] = useState<string | null>(initial?.logo ?? null);
+
+  // ELSTER settings — loaded from API, saved independently of the taxpayer profile
+  const [herstellerId,   setHerstellerId]   = useState("");
+  const [certSaved,      setCertSaved]      = useState(false);
+  const [certUploading,  setCertUploading]  = useState(false);
+  const [certPassword,   setCertPassword]   = useState("");
+  const [certPinSaved,   setCertPinSaved]   = useState(false);
+  const [showPin,        setShowPin]        = useState(false);
+  const certFileRef = useRef<HTMLInputElement>(null);
+
+  // Computed ELSTER fields — derived from form.tax_number + form.state
+  const derivedKz  = bundeslandKzFromState(form.state);
+  const derivedFa  = finanzamtNrFromSteuernummer(form.tax_number, form.state);
+
+  // Load ELSTER settings on mount / project change
+  useEffect(() => {
+    if (!apiBase) return;
+    const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
+    fetch(`${apiBase}/tax/ebilanz/settings${qs}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return;
+        if (d.hersteller_id) setHerstellerId(d.hersteller_id);
+        if (d.cert_pin)      { setCertPassword(d.cert_pin); setCertPinSaved(true); }
+      })
+      .catch(() => {});
+    fetch(`${apiBase}/tax/ebilanz/cert${qs}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.stored) setCertSaved(true); })
+      .catch(() => {});
+  }, [apiBase, dbPath]);
+
+  async function saveElsterSetting(key: string, value: string) {
+    if (!apiBase) return;
+    const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
+    await fetch(`${apiBase}/tax/ebilanz/settings${qs}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: value }),
+    }).catch(() => {});
+  }
+
+  async function uploadCertFile(file: File) {
+    if (!apiBase) return;
+    setCertUploading(true);
+    try {
+      const ab  = await file.arrayBuffer();
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
+      const qs  = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
+      const res = await fetch(`${apiBase}/tax/ebilanz/cert${qs}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cert_data_b64: b64 }),
+      });
+      if (res.ok) setCertSaved(true);
+    } catch { /* ignore */ } finally { setCertUploading(false); }
+  }
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -253,7 +331,7 @@ export function TaxpayerModal({ initial, onSave, onClear, onClose }: {
       onClick={onClose}
     >
       <div
-        className="bg-white border-2 border-red-500 rounded p-5 w-80 flex flex-col gap-3 shadow-xl max-h-[90vh] overflow-y-auto"
+        className="bg-white border-2 border-black shadow-[4px_4px_0_#000] rounded p-5 w-80 flex flex-col gap-3 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <h4 className="text-black text-sm font-black uppercase tracking-wider">
@@ -530,6 +608,139 @@ export function TaxpayerModal({ initial, onSave, onClear, onClose }: {
               />
             </div>
           </>}
+        </div>
+
+        {/* ELSTER-DATEN */}
+        <div className="flex flex-col gap-1.5 pt-1 border-t border-black/5">
+          <button
+            type="button"
+            onClick={() => setElsterOpen((o) => !o)}
+            className="flex items-center justify-between w-full text-left group"
+          >
+            <span className="text-[10px] text-black/40 font-bold uppercase tracking-wider group-hover:text-black/60 transition-colors">
+              ELSTER-DATEN
+            </span>
+            <IconChevronDown
+              className={`text-black/30 transition-transform ${elsterOpen ? "rotate-180" : ""}`}
+              style={{ width: 14, height: 14 }}
+            />
+          </button>
+
+          {elsterOpen && (
+            <div className="flex flex-col gap-1.5">
+
+              {/* 13-stellige Steuernummer (computed, read-only) */}
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[10px] text-black/50 font-bold uppercase tracking-wider">13-stellige Steuernummer</label>
+                {(() => {
+                  if (!form.tax_number) return (
+                    <p className="text-xs font-mono text-black/40 italic px-2 py-1 bg-amber-50 border border-amber-200 rounded">nicht gesetzt</p>
+                  );
+                  if (is13Digit(form.tax_number)) return (
+                    <p className="text-xs font-mono text-black px-2 py-1 bg-amber-50 border border-amber-200 rounded">{form.tax_number}</p>
+                  );
+                  const f13 = toFederal13(form.tax_number, form.state);
+                  if (f13) return (
+                    <p className="text-xs font-mono text-black font-bold px-2 py-1 bg-amber-50 border border-amber-200 rounded">{f13}</p>
+                  );
+                  return (
+                    <p className="text-xs font-mono text-black/40 italic px-2 py-1 bg-amber-50 border border-amber-200 rounded">Bundesland erforderlich</p>
+                  );
+                })()}
+              </div>
+
+              {/* Derived fields: Finanzamtsnr. + Länder-Kz. */}
+              <div className="flex gap-2">
+                <div className="flex flex-col gap-0.5 flex-1">
+                  <label className="text-[10px] text-black/50 font-bold uppercase tracking-wider">Finanzamtsnr. (4-stlg.)</label>
+                  <p className="text-xs font-mono text-black px-2 py-1 bg-amber-50 border border-amber-200 rounded">
+                    {derivedFa || <span className="text-black/40 italic">—</span>}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-0.5 w-20">
+                  <label className="text-[10px] text-black/50 font-bold uppercase tracking-wider">Länder-Kz.</label>
+                  <p className="text-xs font-mono text-black px-2 py-1 bg-amber-50 border border-amber-200 rounded">
+                    {derivedKz || <span className="text-black/40 italic">—</span>}
+                  </p>
+                </div>
+              </div>
+              {(!derivedKz || !derivedFa) && (
+                <p className="text-[10px] text-black/50 font-mono">
+                  Bundesland + Steuernummer in den Stammdaten oben eintragen, dann werden Finanzamtsnr. und Länder-Kz. automatisch berechnet.
+                </p>
+              )}
+
+              {/* Hersteller-ID */}
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[10px] text-black/50 font-bold uppercase tracking-wider">Hersteller-ID</label>
+                <input
+                  type="text"
+                  value={herstellerId}
+                  onChange={e => setHerstellerId(e.target.value)}
+                  onBlur={e => saveElsterSetting("hersteller_id", e.target.value)}
+                  className="border border-black/20 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400"
+                  placeholder="z.B. 40024"
+                />
+              </div>
+
+              {/* Certificate */}
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[10px] text-black/50 font-bold uppercase tracking-wider flex items-center gap-1">
+                  ELSTER-Zertifikat (.pfx)
+                  {certSaved && <span className="flex items-center gap-0.5 font-normal normal-case text-black"><IconCheck className="w-3 h-3" /> gespeichert</span>}
+                </label>
+                <input
+                  type="file"
+                  accept=".pfx,.p12"
+                  ref={certFileRef}
+                  className="hidden"
+                  onChange={async e => {
+                    const f = e.target.files?.[0];
+                    if (f) await uploadCertFile(f);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => certFileRef.current?.click()}
+                  disabled={certUploading}
+                  className="text-xs font-black px-2 py-1 rounded border border-black/20 hover:border-black hover:bg-amber-50 transition-colors text-left w-fit"
+                >
+                  {certUploading ? "Wird hochgeladen…" : "Zertifikat wählen…"}
+                </button>
+              </div>
+
+              {/* Certificate PIN */}
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[10px] text-black/50 font-bold uppercase tracking-wider flex items-center gap-1">
+                  Zertifikat-PIN
+                  {certPinSaved && <span className="flex items-center gap-0.5 font-normal normal-case text-black"><IconCheck className="w-3 h-3" /> gespeichert</span>}
+                </label>
+                <div className="flex gap-1 items-center">
+                  <input
+                    type={showPin ? "text" : "password"}
+                    value={certPassword}
+                    onChange={e => setCertPassword(e.target.value)}
+                    onBlur={async e => {
+                      if (!e.target.value) return;
+                      await saveElsterSetting("cert_pin", e.target.value);
+                      setCertPinSaved(true);
+                    }}
+                    className="border border-black/20 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-400 flex-1"
+                    autoComplete="current-password"
+                    placeholder="Zertifikat-PIN"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPin(v => !v)}
+                    className="px-1.5 py-1 border border-black/20 rounded bg-white hover:bg-amber-50"
+                  >
+                    {showPin ? <IconEyeOff className="w-3.5 h-3.5" /> : <IconEye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 mt-1">

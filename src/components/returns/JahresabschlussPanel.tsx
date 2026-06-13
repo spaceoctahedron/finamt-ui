@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import { useTranslation } from "react-i18next";
 import { IconChevronDown, IconFilePdf, IconCheck, IconClose, IconInfo } from "../../constants/icons";
-import type { Receipt, PeriodFilter, TaxpayerProfile } from "../Sidebar";
-import { CASHFLOW_ONLY_CATS } from "../Sidebar";
+import type { Receipt, PeriodFilter, TaxpayerProfile, ElsterSettings } from "../Sidebar";
+import { CASHFLOW_ONLY_CATS, EMPTY_ELSTER } from "../Sidebar";
 import { LawLink, ElsterTip } from "./shared";
 
 // ---------------------------------------------------------------------------
@@ -149,13 +149,14 @@ function computeJab(
   };
 }
 
-export function JahresabschlussPanel({ allReceipts, period, taxpayer, onEditTaxpayer, apiBase = "", dbPath }: {
-  allReceipts:     Receipt[];
-  period:          PeriodFilter;
-  taxpayer?:       TaxpayerProfile | null;
-  onEditTaxpayer?: () => void;
-  apiBase?:        string;
-  dbPath?:         string | null;
+export function JahresabschlussPanel({ allReceipts, period, taxpayer, onEditTaxpayer, apiBase = "", dbPath, elsterSettings = EMPTY_ELSTER }: {
+  allReceipts:      Receipt[];
+  period:           PeriodFilter;
+  taxpayer?:        TaxpayerProfile | null;
+  onEditTaxpayer?:  () => void;
+  apiBase?:         string;
+  dbPath?:          string | null;
+  elsterSettings?:  ElsterSettings;
 }) {
   const { t } = useTranslation();
   const currentYear = new Date().getFullYear();
@@ -207,34 +208,20 @@ export function JahresabschlussPanel({ allReceipts, period, taxpayer, onEditTaxp
   // Load stored ERiC home and cert on mount / project change
   useEffect(() => {
     // Clear immediately so previous project's values don't persist
-    setEricHome("");
-    setEricHomeSaved(false);
-    setCertSaved(false);
+    setEricHome(elsterSettings.eric_home ?? "");
+    setEricHomeSaved(!!elsterSettings.eric_home);
+    setCertSaved(elsterSettings.cert_saved);
     setCertFile(null);
-    setCertPassword("");
-    setCertPinSaved(false);
-    setElsterId("");
-    setHerstellerId("");
+    setCertPassword(elsterSettings.cert_pin ?? "");
+    setCertPinSaved(!!elsterSettings.cert_pin);
+    setElsterId(elsterSettings.elster_id ?? "");
+    setHerstellerId(elsterSettings.hersteller_id ?? "");
     const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
-    fetch(`${apiBase}/tax/ebilanz/settings${qs}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (!d) return;
-        if (d.eric_home)     { setEricHome(d.eric_home); setEricHomeSaved(true); }
-        if (d.elster_id)     { setElsterId(d.elster_id); }
-        if (d.hersteller_id) { setHerstellerId(d.hersteller_id); }
-        if (d.cert_pin)      { setCertPassword(d.cert_pin); setCertPinSaved(true); }
-      })
-      .catch(() => {});
-    fetch(`${apiBase}/tax/ebilanz/cert${qs}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) { setCertSaved(d.stored); } })
-      .catch(() => {});
     fetch(`${apiBase}/submissions${qs}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.submissions) setSubmissions(d.submissions); })
       .catch(() => {});
-  }, [apiBase, dbPath]);
+  }, [apiBase, dbPath, elsterSettings]);
 
   async function downloadBilanzPdf() {
     const iframe = bilanzIframeRef.current;

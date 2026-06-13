@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import Header from "./components/Header";
-import Sidebar, { type Receipt, type PeriodFilter, type TaxpayerProfile, type ManualEntryForm, TaxpayerModal, DEFAULT_PERIOD, filterByPeriod } from "./components/Sidebar";
+import Sidebar, { type Receipt, type PeriodFilter, type TaxpayerProfile, type ManualEntryForm, type ElsterSettings, TaxpayerModal, DEFAULT_PERIOD, filterByPeriod, EMPTY_ELSTER } from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
 import PreviewPanel from "./components/PreviewPanel";
 import { type DBInfo } from "./components/DBSelector";
@@ -17,8 +17,26 @@ export default function App() {
   const [activeDb,  setActiveDb]  = useState<string | null>(null);
   const [period,    setPeriod]    = useState<PeriodFilter>(DEFAULT_PERIOD);
   const [taxpayer,  setTaxpayer]  = useState<TaxpayerProfile | null>(null);
+  const [elsterSettings, setElsterSettings] = useState<ElsterSettings>(EMPTY_ELSTER);
   const [showTaxpayerModal, setShowTaxpayerModal] = useState(false);
   const uploadAbortRef = useRef<AbortController | null>(null);
+
+  // Load ELSTER settings from API
+  const loadElsterSettings = useCallback((db: string | null) => {
+    const qs = db ? `?db=${encodeURIComponent(db)}` : "";
+    Promise.all([
+      fetch(`${API_BASE}/tax/ebilanz/settings${qs}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${API_BASE}/tax/ebilanz/cert${qs}`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([settings, cert]) => {
+      setElsterSettings({
+        hersteller_id: settings?.hersteller_id ?? "",
+        cert_pin:      settings?.cert_pin      ?? "",
+        cert_saved:    cert?.stored            ?? false,
+        elster_id:     settings?.elster_id     ?? "",
+        eric_home:     settings?.eric_home     ?? "",
+      });
+    });
+  }, []);
 
   // Reload taxpayer from project DB whenever the active DB changes
   useEffect(() => {
@@ -27,7 +45,8 @@ export default function App() {
       .then((r) => r.json())
       .then((d) => setTaxpayer(d.taxpayer ?? null))
       .catch(() => setTaxpayer(null));
-  }, [activeDb]);
+    loadElsterSettings(activeDb);
+  }, [activeDb, loadElsterSettings]);
 
   const handleTaxpayerChange = useCallback((tp: TaxpayerProfile | null) => {
     setTaxpayer(tp);
@@ -233,6 +252,7 @@ export default function App() {
           allReceipts={receipts}
           period={period}
           taxpayer={taxpayer}
+          elsterSettings={elsterSettings}
           onEditTaxpayer={() => setShowTaxpayerModal(true)}
           onUpdateTaxpayer={(patch) => {
             const base = taxpayer ?? { name: "", vat_id: "", tax_number: "", street: "", address_supplement: "", postcode: "", city: "", state: "", country: "" };
@@ -254,9 +274,11 @@ export default function App() {
       {showTaxpayerModal && (
         <TaxpayerModal
           initial={taxpayer}
-          onSave={(tp) => { handleTaxpayerChange(tp); setShowTaxpayerModal(false); }}
+          apiBase={API_BASE}
+          dbPath={activeDb}
+          onSave={(tp) => { handleTaxpayerChange(tp); setShowTaxpayerModal(false); loadElsterSettings(activeDb); }}
           onClear={() => { handleTaxpayerChange(null); setShowTaxpayerModal(false); }}
-          onClose={() => setShowTaxpayerModal(false)}
+          onClose={() => { setShowTaxpayerModal(false); loadElsterSettings(activeDb); }}
         />
       )}
     </div>
