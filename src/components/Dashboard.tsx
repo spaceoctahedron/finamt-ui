@@ -252,7 +252,7 @@ export default function Dashboard({ receipts, allReceipts, period, taxpayer, els
       />
 
       {/* UMSATZSTEUER-VORANMELDUNG */}
-      <UStVAPanel receipts={receipts} period={period} />
+      <UStVAPanel receipts={receipts} period={period} apiBase={apiBase} dbPath={dbPath} taxpayer={taxpayer} elsterSettings={elsterSettings} onSubmissionChange={() => setSubmissionTick(n => n + 1)} />
 
       {/* UMSATZSTEUERERKLÄRUNG */}
       <UStPanel allReceipts={allReceipts} period={period} apiBase={apiBase} dbPath={dbPath} taxpayer={taxpayer} elsterSettings={elsterSettings} onSubmissionChange={() => setSubmissionTick(n => n + 1)} />
