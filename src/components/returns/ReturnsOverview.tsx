@@ -1,18 +1,27 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { IconChevronDown, IconArrowUp } from "../../constants/icons";
+import { IconChevronDown, IconArrowUp, IconXml, IconClose } from "../../constants/icons";
 import type { TaxpayerProfile } from "../Sidebar";
 
 // ---------------------------------------------------------------------------
 // Returns Overview — Steuererklärungen auf einen Blick
 // ---------------------------------------------------------------------------
-type Submission = { type: string; year: number; submitted_at: string; note?: string };
+type Submission = {
+  type: string;
+  year: number;
+  submitted_at: string;
+  note?: string;
+  xml_filename?: string;
+  use_test?: boolean;
+  telenummer?: string;
+};
 
 type Props = {
   taxpayer?:          TaxpayerProfile | null;
   onUpdateTaxpayer?:  (patch: Partial<TaxpayerProfile>) => void;
   apiBase?:           string;
   dbPath?:            string | null;
+  refreshKey?:        number;
 };
 
 // Annual return definitions (excluding JA which has two rows)
@@ -24,7 +33,7 @@ const ANNUAL_RETURN_KEYS: { key: string; abbr: string; labelKey: string }[] = [
   { key: "bundesanzeiger", abbr: "JA \u00b7 Bundesanz.", labelKey: "returns.label_ja_bundesanzeiger" },
 ];
 
-export function ReturnsOverview({ taxpayer, onUpdateTaxpayer, apiBase = "", dbPath }: Props) {
+export function ReturnsOverview({ taxpayer, onUpdateTaxpayer, apiBase = "", dbPath, refreshKey = 0 }: Props) {
   const { t } = useTranslation();
   const currentYear = new Date().getFullYear();
 
@@ -32,6 +41,8 @@ export function ReturnsOverview({ taxpayer, onUpdateTaxpayer, apiBase = "", dbPa
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [saving,      setSaving]      = useState<string | null>(null);
   const [localStart,  setLocalStart]  = useState("");
+  const [viewXml,     setViewXml]     = useState<string | null>(null);
+  const [viewXmlLabel, setViewXmlLabel] = useState<string>("");
 
   // Confirmation dialog state
   type ConfirmState = { action: "add" | "remove"; type: string; year: number; label: string };
@@ -45,7 +56,7 @@ export function ReturnsOverview({ taxpayer, onUpdateTaxpayer, apiBase = "", dbPa
     ? Array.from({ length: currentYear - startYear + 1 }, (_, i) => startYear + i)
     : [];
 
-  // Load submissions whenever project/start-year changes
+  // Load submissions whenever project/start-year changes OR a new submission was made
   useEffect(() => {
     if (!startYear) return;
     const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
@@ -53,7 +64,7 @@ export function ReturnsOverview({ taxpayer, onUpdateTaxpayer, apiBase = "", dbPa
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.submissions) setSubmissions(d.submissions); })
       .catch(() => {});
-  }, [apiBase, dbPath, startYear]);
+  }, [apiBase, dbPath, startYear, refreshKey]);
 
   function isSubmitted(type: string, year: number) {
     return submissions.some(s => s.type === type && s.year === year);
@@ -105,6 +116,14 @@ export function ReturnsOverview({ taxpayer, onUpdateTaxpayer, apiBase = "", dbPa
     if (!isNaN(y) && y >= 1900 && y <= 2100) onUpdateTaxpayer?.({ starting_year: y });
   }
 
+  async function openXml(filename: string, label: string) {
+    const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
+    try {
+      const res = await fetch(`${apiBase}/submissions/file${qs ? qs + "&" : "?"}filename=${encodeURIComponent(filename)}`);
+      if (res.ok) { setViewXmlLabel(label); setViewXml(await res.text()); }
+    } catch { /* ignore */ }
+  }
+
   // UStVA sub-period keys / labels
   const ustvaPeriods = ustvFreq === "monthly"
     ? Array.from({ length: 12 }, (_, i) => ({
@@ -122,25 +141,38 @@ export function ReturnsOverview({ taxpayer, onUpdateTaxpayer, apiBase = "", dbPa
     const done    = isSubmitted(type, year);
     const sk      = `${type}|${year}`;
     const loading = saving === sk;
-    const submittedAt = submissions.find(s => s.type === type && s.year === year)?.submitted_at;
+    const sub = submissions.find(s => s.type === type && s.year === year);
+    const submittedAt = sub?.submitted_at;
+    const xmlFilename = sub?.xml_filename;
     const label = `${abbr} ${year}`;
     return (
-      <button
-        onClick={() => done ? requestRemove(type, year, label) : requestAdd(type, year, label)}
-        disabled={loading}
-        title={done
-          ? `${label} \u2014 ${t("returns.tooltip_submitted")} ${submittedAt ? new Date(submittedAt).toLocaleDateString() : "?"}. ${t("returns.tooltip_remove")}.`
-          : `${label} ${t("returns.tooltip_mark")}`}
-        className={`w-8 h-8 mx-auto rounded border-2 flex items-center justify-center text-sm font-black transition-colors ${
-          done
-            ? "bg-amber-400 border-amber-500 text-black hover:bg-red-100 hover:border-red-400 cursor-pointer"
-            : loading
-            ? "bg-amber-50 border-amber-300 text-amber-400 cursor-wait"
-            : "bg-white border-amber-200 text-black/20 hover:border-amber-500 hover:text-black/50 cursor-pointer"
-        }`}
-      >
-        {done ? "✓" : loading ? "…" : "·"}
-      </button>
+      <div className="flex flex-col items-center gap-0.5">
+        <button
+          onClick={() => done ? requestRemove(type, year, label) : requestAdd(type, year, label)}
+          disabled={loading}
+          title={done
+            ? `${label} \u2014 ${t("returns.tooltip_submitted")} ${submittedAt ? new Date(submittedAt).toLocaleDateString() : "?"}. ${t("returns.tooltip_remove")}.`
+            : `${label} ${t("returns.tooltip_mark")}`}
+          className={`w-8 h-8 mx-auto rounded border-2 flex items-center justify-center text-sm font-black transition-colors ${
+            done
+              ? "bg-amber-400 border-amber-500 text-black hover:bg-red-100 hover:border-red-400 cursor-pointer"
+              : loading
+              ? "bg-amber-50 border-amber-300 text-amber-400 cursor-wait"
+              : "bg-white border-amber-200 text-black/20 hover:border-amber-500 hover:text-black/50 cursor-pointer"
+          }`}
+        >
+          {done ? "✓" : loading ? "…" : "·"}
+        </button>
+        {xmlFilename && (
+          <button
+            onClick={() => openXml(xmlFilename, label)}
+            title={`XML anzeigen: ${xmlFilename}`}
+            className="text-black/30 hover:text-black transition-colors"
+          >
+            <IconXml className="w-3 h-3" />
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -176,6 +208,26 @@ export function ReturnsOverview({ taxpayer, onUpdateTaxpayer, apiBase = "", dbPa
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="bg-white border-2 border-amber-400 rounded">
+
+      {/* XML viewer modal for submitted returns */}
+      {viewXml && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="relative bg-white border-2 border-black rounded w-[90vw] max-w-4xl h-[80vh] flex flex-col shadow-[4px_4px_0_#000]">
+            <div className="flex items-center justify-between px-4 py-2 border-b-2 border-black bg-amber-50">
+              <span className="text-xs font-black uppercase tracking-wider">ELSTER XML · {viewXmlLabel}</span>
+              <button
+                onClick={() => setViewXml(null)}
+                className="text-[10px] font-black px-2 py-1 rounded border border-black hover:bg-black hover:text-white transition-colors flex items-center gap-1"
+              >
+                <IconClose className="w-3.5 h-3.5" /> Schließen
+              </button>
+            </div>
+            <pre className="flex-1 overflow-auto p-4 text-[10px] font-mono text-black leading-relaxed whitespace-pre select-all">
+              {viewXml}
+            </pre>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation dialog */}
       {confirm && (

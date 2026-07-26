@@ -128,6 +128,7 @@ function CategoryChart({ title, totals, receipts }: {
 // ---------------------------------------------------------------------------
 export default function Dashboard({ receipts, allReceipts, period, taxpayer, elsterSettings = EMPTY_ELSTER, onEditTaxpayer, onUpdateTaxpayer, apiBase = "", dbPath }: Props) {
   const { t } = useTranslation();
+  const [submissionTick, setSubmissionTick] = useState(0);
 
   // ── Period label ────────────────────────────────────────────────────────
   const monthNames = t("sidebar.months", { returnObjects: true }) as string[];
@@ -247,13 +248,14 @@ export default function Dashboard({ receipts, allReceipts, period, taxpayer, els
         onUpdateTaxpayer={onUpdateTaxpayer}
         apiBase={apiBase}
         dbPath={dbPath}
+        refreshKey={submissionTick}
       />
 
       {/* UMSATZSTEUER-VORANMELDUNG */}
       <UStVAPanel receipts={receipts} period={period} />
 
       {/* UMSATZSTEUERERKLÄRUNG */}
-      <UStPanel allReceipts={allReceipts} period={period} apiBase={apiBase} dbPath={dbPath} taxpayer={taxpayer} elsterSettings={elsterSettings} />
+      <UStPanel allReceipts={allReceipts} period={period} apiBase={apiBase} dbPath={dbPath} taxpayer={taxpayer} elsterSettings={elsterSettings} onSubmissionChange={() => setSubmissionTick(n => n + 1)} />
 
       {/* GEWERBESTEUERERKLÄRUNG */}
       <GewStPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} />

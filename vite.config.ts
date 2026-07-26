@@ -26,6 +26,7 @@ export default defineConfig({
       "/taxpayer": "http://127.0.0.1:8000",
       "/receipts": "http://127.0.0.1:8000",
       "/settings": "http://127.0.0.1:8000",
+      "/submissions": "http://127.0.0.1:8000",
     },
   },
 })

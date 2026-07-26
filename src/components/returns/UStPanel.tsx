@@ -16,13 +16,15 @@ export function UStPanel({
   dbPath,
   taxpayer,
   elsterSettings = EMPTY_ELSTER,
+  onSubmissionChange,
 }: {
-  allReceipts:      Receipt[];
-  period:           PeriodFilter;
-  apiBase?:         string;
-  dbPath?:          string | null;
-  taxpayer?:        TaxpayerProfile | null;
-  elsterSettings?:  ElsterSettings;
+  allReceipts:         Receipt[];
+  period:              PeriodFilter;
+  apiBase?:            string;
+  dbPath?:             string | null;
+  taxpayer?:           TaxpayerProfile | null;
+  elsterSettings?:     ElsterSettings;
+  onSubmissionChange?: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -35,19 +37,41 @@ export function UStPanel({
   const [submitError, setSubmitError]       = useState<string | null>(null);
   const [validateMsg, setValidateMsg]       = useState<string | null>(null);
   const [transferticket, setTransferticket] = useState<string | null>(null);
+  const [savedXmlFilename, setSavedXmlFilename] = useState<string | null>(null);
   const [ustXml, setUsteXml]               = useState<string | null>(null);
   const [ustXmlOpen, setUsteXmlOpen]       = useState(false);
   const [ustXmlCopied, setUsteXmlCopied]   = useState(false);
   const [ustXmlLoading, setUsteXmlLoading] = useState(false);
 
+  // Track whether a real (non-test) submission was already recorded
+  type ExistingSubmission = { submitted_at: string; telenummer?: string; xml_filename?: string };
+  const [alreadySubmittedReal, setAlreadySubmittedReal] = useState<ExistingSubmission | null>(null);
+  const [confirmResubmit, setConfirmResubmit]           = useState(false);
+
   // Derived ELSTER params from taxpayer profile
   const derivedBundeslandKz = bundeslandKzFromState(taxpayer?.state);
   const derivedFinanzamtNr  = finanzamtNrFromSteuernummer(taxpayer?.tax_number, taxpayer?.state);
 
-  // Reset action state on project change
+  const currentYear  = new Date().getFullYear();
+  const year         = period.mode === "all" ? currentYear - 1 : period.year;
+
+  // Load existing real-submission status whenever project or year changes
   useEffect(() => {
     setTransferticket(null); setSubmitError(null); setValidateMsg(null);
+    setSavedXmlFilename(null); setAlreadySubmittedReal(null);
   }, [apiBase, dbPath]);
+
+  useEffect(() => {
+    const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
+    fetch(`${apiBase}/submissions${qs}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { submissions?: Array<{ type: string; year: number; use_test?: boolean; submitted_at: string; telenummer?: string; xml_filename?: string }> } | null) => {
+        if (!d?.submissions) return;
+        const existing = d.submissions.find(s => s.type === "uste" && s.year === year && !s.use_test);
+        setAlreadySubmittedReal(existing ?? null);
+      })
+      .catch(() => {});
+  }, [apiBase, dbPath, year]);
 
   async function previewUstXml() {
     setUsteXmlLoading(true);
@@ -83,9 +107,10 @@ export function UStPanel({
 
   async function callUstEndpoint(validateOnly: boolean) {
     const isSend = !validateOnly;
-    if (isSend) { setSubmitting(true); setTransferticket(null); }
+    if (isSend) { setSubmitting(true); setTransferticket(null); setSavedXmlFilename(null); }
     else        { setValidating(true);  setValidateMsg(null); }
     setSubmitError(null);
+    setConfirmResubmit(false);
 
     try {
       const qs  = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
@@ -108,7 +133,14 @@ export function UStPanel({
         throw new Error(data.error_message ?? data.detail ?? res.statusText);
       }
       if (isSend) {
-        setTransferticket(data.telenummer ?? "✓ OK");
+        const tk = data.telenummer ?? "✓ OK";
+        setTransferticket(tk);
+        if (data.xml_filename) setSavedXmlFilename(data.xml_filename);
+        if (!useTest) {
+          // Update local already-submitted state so the UI reflects it immediately
+          setAlreadySubmittedReal({ submitted_at: new Date().toISOString(), telenummer: tk, xml_filename: data.xml_filename });
+        }
+        onSubmissionChange?.();
       } else {
         setValidateMsg(data.message ?? "✓ XML valid");
       }
@@ -120,8 +152,14 @@ export function UStPanel({
     }
   }
 
-  const currentYear  = new Date().getFullYear();
-  const year         = period.mode === "all" ? currentYear - 1 : period.year;
+  function handleSendClick() {
+    // Gate re-submission: if a real submission already exists, require explicit confirm
+    if (!useTest && alreadySubmittedReal) {
+      setConfirmResubmit(true);
+      return;
+    }
+    callUstEndpoint(false);
+  }
   const yearReceipts = allReceipts.filter((r) => r.receipt_date?.startsWith(String(year)));
 
   const purchases    = yearReceipts.filter((r) => r.receipt_type === "purchase");
@@ -287,6 +325,41 @@ export function UStPanel({
                   </div>
                 )}
 
+                {/* Already-submitted real warning */}
+                {alreadySubmittedReal && !useTest && (
+                  <div className="text-[10px] text-black border-2 border-amber-500 bg-amber-50 rounded p-2 flex items-start gap-1.5">
+                    <IconWarning className="w-3.5 h-3.5 shrink-0 mt-px text-black" />
+                    <span>
+                      <strong>Bereits übermittelt</strong> am {new Date(alreadySubmittedReal.submitted_at).toLocaleDateString("de-DE")}
+                      {alreadySubmittedReal.telenummer ? ` · Telenummer: ${alreadySubmittedReal.telenummer}` : ""}.
+                      Eine erneute Übermittlung ist rechtswirksam!
+                    </span>
+                  </div>
+                )}
+
+                {/* Re-submit confirmation gate */}
+                {confirmResubmit && (
+                  <div className="border-2 border-black rounded p-3 bg-white flex flex-col gap-2 shadow-[4px_4px_0_#000]">
+                    <p className="text-[11px] font-black text-black">
+                      Diese Erklärung wurde bereits ans Finanzamt übermittelt. Wirklich erneut senden?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setConfirmResubmit(false)}
+                        className="px-3 py-1 text-xs font-black rounded border-2 border-black bg-white text-black hover:bg-amber-50"
+                      >
+                        Abbrechen
+                      </button>
+                      <button
+                        onClick={() => callUstEndpoint(false)}
+                        className="px-3 py-1 text-xs font-black rounded border-2 border-black bg-black text-amber-400 hover:bg-black/80"
+                      >
+                        Trotzdem senden
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex gap-2 pt-0.5 flex-wrap">
                   <button
@@ -308,12 +381,14 @@ export function UStPanel({
                     className={`rounded px-3 py-1 text-[11px] font-bold transition-colors disabled:opacity-50 ${
                       useTest
                         ? "bg-amber-400 hover:bg-amber-500 text-black border border-amber-500"
+                        : alreadySubmittedReal
+                        ? "bg-white border-2 border-amber-500 text-black hover:bg-amber-50"
                         : "bg-black hover:bg-amber-500 text-white hover:text-black border border-black"
                     }`}
-                    onClick={() => callUstEndpoint(false)}
-                    disabled={submitting || validating}
+                    onClick={handleSendClick}
+                    disabled={submitting || validating || confirmResubmit}
                   >
-                    {submitting ? "Wird übermittelt…" : useTest ? "Test-Übermittlung" : "An Finanzamt senden"}
+                    {submitting ? "Wird übermittelt…" : useTest ? "Test-Übermittlung" : alreadySubmittedReal ? "Erneut senden…" : "An Finanzamt senden"}
                   </button>
                 </div>
 
@@ -324,8 +399,34 @@ export function UStPanel({
                   </div>
                 )}
                 {transferticket && !submitError && (
-                  <div className="text-[11px] text-black bg-amber-50 border border-amber-400 rounded p-2 flex items-start gap-1.5">
-                    <IconCheck className="w-4 h-4 shrink-0 mt-px" /> <span>Erfolgreich übermittelt — Telenummer: <strong className="font-mono">{transferticket}</strong></span>
+                  <div className="text-[11px] text-black bg-amber-400 border-2 border-amber-500 rounded p-2.5 flex flex-col gap-1 shadow-[2px_2px_0_#000]">
+                    <div className="flex items-center gap-1.5 font-black">
+                      <IconCheck className="w-4 h-4 shrink-0" />
+                      {useTest
+                        ? "Test-Übermittlung erfolgreich — nicht ans Finanzamt gesendet"
+                        : "Erfolgreich an das Finanzamt übermittelt"}
+                    </div>
+                    <div className="font-mono text-[10px]">
+                      Telenummer: <strong>{transferticket}</strong>
+                    </div>
+                    {savedXmlFilename && (
+                      <div className="text-[10px] mt-0.5">
+                        XML gespeichert: <span className="font-mono">{savedXmlFilename}</span>
+                        <button
+                          className="ml-2 underline font-bold text-black hover:no-underline"
+                          onClick={async () => {
+                            const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}&filename=${encodeURIComponent(savedXmlFilename)}` : `?filename=${encodeURIComponent(savedXmlFilename)}`;
+                            const res = await fetch(`${apiBase}/submissions/file${qs}`);
+                            if (!res.ok) return;
+                            const text = await res.text();
+                            setUsteXml(text);
+                            setUsteXmlOpen(true);
+                          }}
+                        >
+                          Anzeigen
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
                 {submitError && (
