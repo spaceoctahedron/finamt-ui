@@ -223,6 +223,13 @@ export function JahresabschlussPanel({ allReceipts, period, taxpayer, onEditTaxp
       .catch(() => {});
   }, [apiBase, dbPath, elsterSettings]);
 
+  // Reset ELSTER submission success/error messages whenever the selected
+  // year changes, so a stale "Erfolgreich übermittelt" banner from a
+  // previous fiscal year doesn't linger after switching periods.
+  useEffect(() => {
+    setTransferticket(null); setSubmitError(null); setValidateMsg(null);
+  }, [apiBase, dbPath, year]);
+
   async function downloadBilanzPdf() {
     const iframe = bilanzIframeRef.current;
     if (!iframe?.contentDocument?.body) return;

@@ -59,7 +59,7 @@ export function UStPanel({
   useEffect(() => {
     setTransferticket(null); setSubmitError(null); setValidateMsg(null);
     setSavedXmlFilename(null); setAlreadySubmittedReal(null);
-  }, [apiBase, dbPath]);
+  }, [apiBase, dbPath, year]);
 
   useEffect(() => {
     const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";

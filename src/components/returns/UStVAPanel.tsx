@@ -73,11 +73,11 @@ export function UStVAPanel({
   const derivedBundeslandKz = bundeslandKzFromState(taxpayer?.state);
   const derivedFinanzamtNr  = finanzamtNrFromSteuernummer(taxpayer?.tax_number, taxpayer?.state);
 
-  // ── Reset on project change ────────────────────────────────────────────
+  // ── Reset on project or period change ──────────────────────────────────
   useEffect(() => {
     setTransferticket(null); setSubmitError(null); setValidateMsg(null);
     setSavedXmlFilename(null); setAlreadySubmittedReal(null);
-  }, [apiBase, dbPath]);
+  }, [apiBase, dbPath, subType, year]);
 
   // ── Load existing submission for this period ───────────────────────────
   useEffect(() => {
