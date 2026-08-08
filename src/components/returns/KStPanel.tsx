@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { IconChevronDown, IconInfo } from "../../constants/icons";
-import type { Receipt, PeriodFilter, TaxpayerProfile } from "../Sidebar";
-import { CASHFLOW_ONLY_CATS } from "../Sidebar";
+import { IconChevronDown, IconInfo, IconSend, IconCheck, IconClose, IconWarning, IconXml, IconCopy, IconDownload } from "../../constants/icons";
+import type { Receipt, PeriodFilter, TaxpayerProfile, ElsterSettings } from "../Sidebar";
+import { CASHFLOW_ONLY_CATS, EMPTY_ELSTER } from "../Sidebar";
 import { LawLink, ElsterTip } from "./shared";
+import { bundeslandKzFromState, finanzamtNrFromSteuernummer } from "../../utils/steuernummer";
 
 // ---------------------------------------------------------------------------
 // Körperschaftsteuererklärung panel — § 31 KStG
@@ -52,17 +53,65 @@ function KRow({
   );
 }
 
-export function KStPanel({ allReceipts, period, taxpayer, onEditTaxpayer }: {
-  allReceipts:     Receipt[];
-  period:          PeriodFilter;
-  taxpayer?:       TaxpayerProfile | null;
-  onEditTaxpayer?: () => void;
+export function KStPanel({
+  allReceipts, period, taxpayer, onEditTaxpayer,
+  apiBase = "", dbPath, elsterSettings = EMPTY_ELSTER, onSubmissionChange,
+}: {
+  allReceipts:        Receipt[];
+  period:             PeriodFilter;
+  taxpayer?:          TaxpayerProfile | null;
+  onEditTaxpayer?:    () => void;
+  apiBase?:           string;
+  dbPath?:            string | null;
+  elsterSettings?:    ElsterSettings;
+  onSubmissionChange?: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
-  const currentYear  = new Date().getFullYear();
-  const year         = period.mode === "all" ? currentYear - 1 : period.year;
+  // ── ELSTER submission state ────────────────────────────────────────
+  const [elsterOpen,       setElsterOpen]       = useState(false);
+  const [useTest,          setUseTest]          = useState(true);
+  const [submitting,       setSubmitting]       = useState(false);
+  const [validating,       setValidating]       = useState(false);
+  const [submitError,      setSubmitError]      = useState<string | null>(null);
+  const [validateMsg,      setValidateMsg]      = useState<string | null>(null);
+  const [transferticket,   setTransferticket]   = useState<string | null>(null);
+  const [savedXmlFilename, setSavedXmlFilename] = useState<string | null>(null);
+  const [kstXml,           setKstXml]           = useState<string | null>(null);
+  const [kstXmlOpen,       setKstXmlOpen]       = useState(false);
+  const [kstXmlCopied,     setKstXmlCopied]     = useState(false);
+  const [kstXmlLoading,    setKstXmlLoading]    = useState(false);
+
+  type ExistingSubmission = { submitted_at: string; telenummer?: string; xml_filename?: string };
+  const [alreadySubmittedReal, setAlreadySubmittedReal] = useState<ExistingSubmission | null>(null);
+  const [confirmResubmit,      setConfirmResubmit]      = useState(false);
+
+  const derivedBundeslandKz = bundeslandKzFromState(taxpayer?.state);
+  const derivedFinanzamtNr  = finanzamtNrFromSteuernummer(taxpayer?.tax_number, taxpayer?.state);
+
+  const currentYear = new Date().getFullYear();
+  const year        = period.mode === "all" ? currentYear - 1 : period.year;
+
+  // Reset ELSTER state on project / year change
+  useEffect(() => {
+    setTransferticket(null); setSubmitError(null); setValidateMsg(null);
+    setSavedXmlFilename(null); setAlreadySubmittedReal(null);
+  }, [apiBase, dbPath, year]);
+
+  // Load existing real-submission status
+  useEffect(() => {
+    const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
+    fetch(`${apiBase}/submissions${qs}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { submissions?: Array<{ type: string; year: number; use_test?: boolean; submitted_at: string; telenummer?: string; xml_filename?: string }> } | null) => {
+        if (!d?.submissions) return;
+        const existing = d.submissions.find(s => s.type === "kst" && s.year === year && !s.use_test);
+        setAlreadySubmittedReal(existing ?? null);
+      })
+      .catch(() => {});
+  }, [apiBase, dbPath, year]);
+
   const yearReceipts = allReceipts.filter((r) => r.receipt_date?.startsWith(String(year)));
 
   const purchases = yearReceipts.filter((r) => r.receipt_type === "purchase" && !CASHFLOW_ONLY_CATS.has(r.category));
@@ -133,6 +182,92 @@ export function KStPanel({ allReceipts, period, taxpayer, onEditTaxpayer }: {
   const fE = (n: number) =>
     n.toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + " €";
   const negFmt = (n: number) => (n < 0 ? `−${fE(Math.abs(n))}` : fE(n));
+
+  // The zvE passed to the backend = steuerbilanzgewinn (= whole euros)
+  const zveForApi = steuerbilanzgewinn;
+
+  async function previewKstXml() {
+    setKstXmlLoading(true);
+    setSubmitError(null);
+    try {
+      const qs  = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
+      const res = await fetch(`${apiBase}/tax/kst/xml${qs}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year,
+          steuernummer:  taxpayer?.tax_number    || undefined,
+          bundesland_kz: derivedBundeslandKz     || undefined,
+          finanzamt_nr:  derivedFinanzamtNr      || undefined,
+          hersteller_id: elsterSettings.hersteller_id || undefined,
+          cert_password: elsterSettings.cert_pin      || undefined,
+          use_test:      useTest,
+          zve_override:  zveForApi,
+          company_name:  taxpayer?.name || undefined,
+          rechtsform:    taxpayer?.rechtsform || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? res.statusText);
+      }
+      setKstXml(await res.text());
+      setKstXmlOpen(true);
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setKstXmlLoading(false);
+    }
+  }
+
+  async function callKstEndpoint(validateOnly: boolean) {
+    const isSend = !validateOnly;
+    if (isSend) { setSubmitting(true); setTransferticket(null); setSavedXmlFilename(null); }
+    else        { setValidating(true);  setValidateMsg(null); }
+    setSubmitError(null);
+    setConfirmResubmit(false);
+    try {
+      const qs  = dbPath ? `?db=${encodeURIComponent(dbPath)}` : "";
+      const res = await fetch(`${apiBase}/tax/kst/submit${qs}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year,
+          steuernummer:  taxpayer?.tax_number    || undefined,
+          bundesland_kz: derivedBundeslandKz     || undefined,
+          finanzamt_nr:  derivedFinanzamtNr      || undefined,
+          hersteller_id: elsterSettings.hersteller_id || undefined,
+          cert_password: elsterSettings.cert_pin      || undefined,
+          use_test:      useTest,
+          validate_only: validateOnly,
+          zve_override:  zveForApi,
+          company_name:  taxpayer?.name || undefined,
+          rechtsform:    taxpayer?.rechtsform || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error_message ?? data.detail ?? res.statusText);
+      if (isSend) {
+        const tk = data.telenummer ?? "✓ OK";
+        setTransferticket(tk);
+        if (data.xml_filename) setSavedXmlFilename(data.xml_filename);
+        if (!useTest) setAlreadySubmittedReal({ submitted_at: new Date().toISOString(), telenummer: tk, xml_filename: data.xml_filename });
+        onSubmissionChange?.();
+      } else {
+        setValidateMsg(data.message ?? "✓ XML valid");
+      }
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (isSend) setSubmitting(false);
+      else        setValidating(false);
+    }
+  }
+
+  function handleSendClick() {
+    if (!useTest && alreadySubmittedReal) { setConfirmResubmit(true); return; }
+    callKstEndpoint(false);
+  }
 
   return (
     <div className="bg-white border-2 border-amber-400 rounded">
@@ -659,6 +794,210 @@ export function KStPanel({ allReceipts, period, taxpayer, onEditTaxpayer }: {
           <p className="text-[10px] text-black font-mono leading-relaxed flex items-start gap-1">
             <IconInfo className="w-3 h-3 shrink-0 mt-px" /> {t("dashboard.kst_disclaimer")}
           </p>
+
+          {/* ── ELSTER submission section ────────────────────────────── */}
+          <div className="border border-amber-300 rounded-lg bg-amber-50">
+            <button
+              className="w-full flex items-center justify-between px-3 py-2 text-left"
+              onClick={() => setElsterOpen(v => !v)}
+            >
+              <span className="text-[11px] font-black uppercase tracking-wider text-black flex items-center gap-1.5">
+                <IconSend className="w-3.5 h-3.5 shrink-0" /> An ELSTER übermitteln
+                {transferticket && (
+                  <span className="ml-2 text-black normal-case font-mono flex items-center gap-1"><IconCheck className="w-3 h-3" />{transferticket}</span>
+                )}
+              </span>
+              <IconChevronDown className={`w-3.5 h-3.5 text-black shrink-0 transition-transform ${elsterOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {elsterOpen && (
+              <div className="px-3 pb-3 flex flex-col gap-2.5 text-[11px]">
+
+                {/* Settings summary */}
+                <div className="text-[10px] text-black/60 font-mono grid grid-cols-2 gap-x-4 gap-y-0.5 bg-white border border-amber-200 rounded px-2 py-1.5">
+                  <span>Steuernr.: <strong className="text-black">{taxpayer?.tax_number || <em>nicht gesetzt</em>}</strong></span>
+                  <span>Finanzamt: <strong className="text-black">{derivedFinanzamtNr || <em>—</em>}</strong></span>
+                  <span>Länder-Kz.: <strong className="text-black">{derivedBundeslandKz || <em>—</em>}</strong></span>
+                  <span>Hersteller-ID: <strong className="text-black">{elsterSettings.hersteller_id || <em>nicht gesetzt</em>}</strong></span>
+                  <span className="col-span-2">Zertifikat: <strong className="text-black">{elsterSettings.cert_saved ? "✓ gespeichert" : <em>nicht hochgeladen</em>}</strong></span>
+                  <span className="col-span-2 border-t border-amber-100 mt-0.5 pt-0.5">
+                    zvE: <strong className="text-black">{fE(steuerbilanzgewinn)}</strong>
+                    <span className="text-black/40 ml-1">(berechnet aus Belegen)</span>
+                  </span>
+                </div>
+
+                {(!elsterSettings.cert_saved || !elsterSettings.hersteller_id || !taxpayer?.tax_number) && (
+                  <p className="text-[10px] text-black font-mono">
+                    <IconInfo className="w-3 h-3 inline mr-0.5" /> ELSTER-Daten unvollständig — bitte im Unternehmensprofil (<strong>Bearbeiten</strong>) ergänzen.
+                  </p>
+                )}
+
+                {/* Test mode toggle */}
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={useTest}
+                    onChange={e => setUseTest(e.target.checked)}
+                    className="accent-amber-500"
+                  />
+                  <span className="text-black">Testmodus (nicht rechtswirksam)</span>
+                </label>
+
+                {!useTest && (
+                  <div className="text-black font-bold text-[10px] border border-amber-500 rounded p-2 bg-amber-50 flex items-start gap-1.5">
+                    <IconWarning className="w-3.5 h-3.5 shrink-0 mt-px" /> <span>Produktivmodus — Übermittlung ist <em>rechtswirksam</em> und wird an das Finanzamt gesendet!</span>
+                  </div>
+                )}
+
+                {/* Already-submitted real warning */}
+                {alreadySubmittedReal && !useTest && (
+                  <div className="text-[10px] text-black border-2 border-amber-500 bg-amber-50 rounded p-2 flex items-start gap-1.5">
+                    <IconWarning className="w-3.5 h-3.5 shrink-0 mt-px text-black" />
+                    <span>
+                      <strong>Bereits übermittelt</strong> am {new Date(alreadySubmittedReal.submitted_at).toLocaleDateString("de-DE")}
+                      {alreadySubmittedReal.telenummer ? ` · Telenummer: ${alreadySubmittedReal.telenummer}` : ""}.
+                      Eine erneute Übermittlung ist rechtswirksam!
+                    </span>
+                  </div>
+                )}
+
+                {/* Re-submit confirmation gate */}
+                {confirmResubmit && (
+                  <div className="border-2 border-black rounded p-3 bg-white flex flex-col gap-2 shadow-[4px_4px_0_#000]">
+                    <p className="text-[11px] font-black text-black">
+                      Diese Erklärung wurde bereits ans Finanzamt übermittelt. Wirklich erneut senden?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setConfirmResubmit(false)}
+                        className="px-3 py-1 text-xs font-black rounded border-2 border-black bg-white text-black hover:bg-amber-50"
+                      >
+                        Abbrechen
+                      </button>
+                      <button
+                        onClick={() => callKstEndpoint(false)}
+                        className="px-3 py-1 text-xs font-black rounded border-2 border-black bg-black text-amber-400 hover:bg-black/80"
+                      >
+                        Trotzdem senden
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-0.5 flex-wrap">
+                  <button
+                    className="border border-black rounded px-3 py-1 text-[11px] font-bold bg-white hover:bg-amber-100 transition-colors disabled:opacity-50 flex items-center gap-1"
+                    onClick={previewKstXml}
+                    disabled={kstXmlLoading || submitting}
+                  >
+                    <IconXml className="w-3.5 h-3.5" />
+                    {kstXmlLoading ? "Lade…" : "XML anzeigen"}
+                  </button>
+                  <button
+                    className="border border-amber-400 rounded px-3 py-1 text-[11px] font-bold bg-white hover:bg-amber-100 transition-colors disabled:opacity-50"
+                    onClick={() => callKstEndpoint(true)}
+                    disabled={validating || submitting}
+                  >
+                    {validating ? "Prüfe…" : "Validieren"}
+                  </button>
+                  <button
+                    className={`rounded px-3 py-1 text-[11px] font-bold transition-colors disabled:opacity-50 ${
+                      useTest
+                        ? "bg-amber-400 hover:bg-amber-500 text-black border border-amber-500"
+                        : alreadySubmittedReal
+                        ? "bg-white border-2 border-amber-500 text-black hover:bg-amber-50"
+                        : "bg-black hover:bg-amber-500 text-white hover:text-black border border-black"
+                    }`}
+                    onClick={handleSendClick}
+                    disabled={submitting || validating || confirmResubmit}
+                  >
+                    {submitting ? "Wird übermittelt…" : useTest ? "Test-Übermittlung" : alreadySubmittedReal ? "Erneut senden…" : "An Finanzamt senden"}
+                  </button>
+                </div>
+
+                {/* Result feedback */}
+                {validateMsg && !submitError && (
+                  <div className="text-[10px] text-black bg-amber-50 border border-amber-300 rounded p-1.5">
+                    {validateMsg}
+                  </div>
+                )}
+                {transferticket && !submitError && (
+                  <div className="text-[11px] text-black bg-amber-400 border-2 border-amber-500 rounded p-2.5 flex flex-col gap-1 shadow-[2px_2px_0_#000]">
+                    <div className="flex items-center gap-1.5 font-black">
+                      <IconCheck className="w-4 h-4 shrink-0" />
+                      {useTest ? "Test-Übermittlung erfolgreich — nicht ans Finanzamt gesendet" : "Erfolgreich an das Finanzamt übermittelt"}
+                    </div>
+                    <div className="font-mono text-[10px]">Telenummer: <strong>{transferticket}</strong></div>
+                    {savedXmlFilename && (
+                      <div className="text-[10px] mt-0.5">
+                        XML gespeichert: <span className="font-mono">{savedXmlFilename}</span>
+                        <button
+                          className="ml-2 underline font-bold text-black hover:no-underline"
+                          onClick={async () => {
+                            const qs = dbPath ? `?db=${encodeURIComponent(dbPath)}&filename=${encodeURIComponent(savedXmlFilename)}` : `?filename=${encodeURIComponent(savedXmlFilename)}`;
+                            const res = await fetch(`${apiBase}/submissions/file${qs}`);
+                            if (!res.ok) return;
+                            setKstXml(await res.text());
+                            setKstXmlOpen(true);
+                          }}
+                        >
+                          Anzeigen
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {submitError && (
+                  <div className="text-[10px] text-black bg-white border border-black rounded p-1.5 font-mono break-words flex items-start gap-1">
+                    <IconClose className="w-3.5 h-3.5 shrink-0 mt-px" /> {submitError}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── KSt XML Preview Modal ─────────────────────────────────────── */}
+      {kstXmlOpen && kstXml && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="relative bg-white border-2 border-black rounded w-[90vw] max-w-4xl h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-2 border-b-2 border-black bg-amber-50">
+              <span className="text-xs font-black uppercase tracking-wider">ELSTER XML · KSt {year}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { navigator.clipboard.writeText(kstXml).then(() => { setKstXmlCopied(true); setTimeout(() => setKstXmlCopied(false), 2000); }); }}
+                  className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded border border-black hover:bg-amber-100 transition-colors"
+                >
+                  <IconCopy className="w-3.5 h-3.5" />
+                  {kstXmlCopied ? "Kopiert" : "Kopieren"}
+                </button>
+                <button
+                  onClick={() => {
+                    const blob = new Blob([kstXml], { type: "application/xml" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url; a.download = `KSt_${year}_ELSTER.xml`; a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded border border-black hover:bg-amber-100 transition-colors"
+                >
+                  <IconDownload className="w-3.5 h-3.5" />
+                  Download
+                </button>
+                <button
+                  onClick={() => setKstXmlOpen(false)}
+                  className="text-[10px] font-black px-2 py-1 rounded border border-black hover:bg-black hover:text-white transition-colors"
+                >
+                  Schließen
+                </button>
+              </div>
+            </div>
+            <pre className="flex-1 overflow-auto p-4 text-[10px] font-mono text-black leading-relaxed whitespace-pre select-all">
+              {kstXml}
+            </pre>
+          </div>
         </div>
       )}
     </div>

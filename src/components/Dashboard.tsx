@@ -261,7 +261,7 @@ export default function Dashboard({ receipts, allReceipts, period, taxpayer, els
       <GewStPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} />
 
       {/* KÖRPERSCHAFTSTEUERERKLÄRUNG */}
-      <KStPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} />
+      <KStPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} apiBase={apiBase} dbPath={dbPath} elsterSettings={elsterSettings} onSubmissionChange={() => setSubmissionTick(n => n + 1)} />
 
       {/* Jahresabschluss */}
       <JahresabschlussPanel allReceipts={allReceipts} period={period} taxpayer={taxpayer} onEditTaxpayer={onEditTaxpayer} apiBase={apiBase} dbPath={dbPath} elsterSettings={elsterSettings} />
