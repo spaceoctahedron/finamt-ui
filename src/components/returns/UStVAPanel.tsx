@@ -79,6 +79,12 @@ export function UStVAPanel({
     setSavedXmlFilename(null); setAlreadySubmittedReal(null);
   }, [apiBase, dbPath, subType, year]);
 
+  // ── Reset stale submission result/errors when switching test ↔ prod ───
+  useEffect(() => {
+    setTransferticket(null); setSavedXmlFilename(null);
+    setValidateMsg(null); setSubmitError(null); setConfirmResubmit(false);
+  }, [useTest]);
+
   // ── Load existing submission for this period ───────────────────────────
   useEffect(() => {
     if (!subType) return;
@@ -302,7 +308,7 @@ export function UStVAPanel({
                     <div className="text-[10px] text-black border-2 border-amber-500 bg-amber-50 rounded p-2 flex items-start gap-1.5">
                       <IconWarning className="w-3.5 h-3.5 shrink-0 mt-px text-black" />
                       <span>
-                        <strong>Bereits übermittelt</strong> am {new Date(alreadySubmittedReal.submitted_at).toLocaleDateString("de-DE")}
+                        <strong>Bereits übermittelt</strong> am {new Date(alreadySubmittedReal.submitted_at).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })} Uhr
                         {alreadySubmittedReal.telenummer ? ` · Telenummer: ${alreadySubmittedReal.telenummer}` : ""}.
                         Eine erneute Übermittlung ist rechtswirksam!
                       </span>
