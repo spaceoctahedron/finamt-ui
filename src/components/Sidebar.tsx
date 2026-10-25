@@ -124,6 +124,26 @@ export function fmt(amount: number | null | undefined, currency = "EUR"): string
   return new Intl.NumberFormat(locale, { style: "currency", currency }).format(amount);
 }
 
+/** Cache key for a currency→EUR rate as of a given receipt date (or "latest" when absent). */
+function fxKey(currency: string, date: string | null | undefined): string {
+  return `${currency}|${date ?? ""}`;
+}
+
+/**
+ * EUR-equivalent of a receipt's total_amount. Foreign-currency receipts are converted
+ * using a live (historical, as-of receipt date) rate fetched via the backend /fx-rate
+ * proxy — the same source PreviewPanel uses. Falls back to the raw amount when no rate
+ * has been resolved yet (matches PreviewPanel's documented fallback behaviour), so sums
+ * must never treat a non-EUR amount as EUR without first consulting this helper.
+ */
+export function eurAmount(r: Receipt, rates: Record<string, number>): number {
+  const amt = r.total_amount ?? 0;
+  const currency = r.currency;
+  if (!currency || currency === "EUR") return amt;
+  const rate = rates[fxKey(currency, r.receipt_date)];
+  return rate != null ? amt * rate : amt;
+}
+
 export function displayName(r: Receipt): string {
   return r.vendor ?? r.counterparty?.name ?? r.id.slice(0, 8);
 }
@@ -1258,7 +1278,7 @@ type Props = {
 // ---------------------------------------------------------------------------
 
 function CategoryGroup({
-  cat: _cat, meta, items, isOpen, selectedId, confirmingId,
+  cat: _cat, meta, items, isOpen, selectedId, confirmingId, rates,
   onToggle, onSelect, onDeleteClick, onDeleteConfirm, onDeleteCancel,
 }: {
   cat:             string;
@@ -1267,6 +1287,7 @@ function CategoryGroup({
   isOpen:          boolean;
   selectedId:      string | null;
   confirmingId:    string | null;
+  rates:           Record<string, number>;
   onToggle:        () => void;
   onSelect:        (r: Receipt) => void;
   onDeleteClick:   (id: string) => void;
@@ -1274,7 +1295,9 @@ function CategoryGroup({
   onDeleteCancel:  () => void;
 }) {
   const { t } = useTranslation();
-  const catTotal = items.reduce((s, r) => s + (r.total_amount ?? 0), 0);
+  // Aggregate totals mix receipts of potentially different currencies, so they must
+  // always be expressed in EUR (converted via the live fx-rate cache), never summed raw.
+  const catTotal = items.reduce((s, r) => s + eurAmount(r, rates), 0);
 
   // Group receipts by supplier name
   const supplierMap = items.reduce<Record<string, Receipt[]>>((acc, r) => {
@@ -1314,7 +1337,7 @@ function CategoryGroup({
       </button>
 
       {isOpen && supplierEntries.map(([supplierName, supplierItems]) => {
-        const supplierTotal = supplierItems.reduce((s, r) => s + (r.total_amount ?? 0), 0);
+        const supplierTotal = supplierItems.reduce((s, r) => s + eurAmount(r, rates), 0);
         const isSupplierOpen = expandedSuppliers.has(supplierName);
         const hasSelectedItem = supplierItems.some((r) => r.id === selectedId);
 
@@ -1361,7 +1384,7 @@ function CategoryGroup({
                   </span>
                 </div>
                 <span className="text-[11px] text-black/60 font-mono font-bold shrink-0 ml-2">
-                  {fmt(r.total_amount)}
+                  {fmt(r.total_amount, r.currency || "EUR")}
                 </span>
 
                 {/* Delete button + confirmation popover */}
@@ -1439,6 +1462,41 @@ export default function Sidebar({
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [recentWindow,    setRecentWindow]    = useState<RecentWindow | null>(null);
   const [nameQuery,       setNameQuery]       = useState("");
+  const [fxRates,         setFxRates]         = useState<Record<string, number>>({});
+
+  // Resolve currency→EUR rates (as of each receipt's date) for every foreign-currency
+  // receipt so category/supplier/section totals can be summed correctly in EUR instead
+  // of naively adding raw amounts across different currencies.
+  useEffect(() => {
+    const missing = new Set<string>();
+    for (const r of allReceipts) {
+      const currency = r.currency;
+      if (!currency || currency === "EUR") continue;
+      const key = fxKey(currency, r.receipt_date);
+      if (!(key in fxRates)) missing.add(key);
+    }
+    if (missing.size === 0) return;
+    let cancelled = false;
+    (async () => {
+      const updates: Record<string, number> = {};
+      await Promise.all([...missing].map(async (key) => {
+        const [currency, date] = key.split("|");
+        const dateParam = date ? `&date=${encodeURIComponent(date)}` : "";
+        try {
+          const res = await fetch(`${apiBase}/fx-rate?from=${encodeURIComponent(currency)}&to=EUR${dateParam}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.rate != null) updates[key] = data.rate;
+        } catch {
+          // ignore — falls back to raw amount, same as PreviewPanel's "no rate" behaviour
+        }
+      }));
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setFxRates((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [allReceipts, apiBase, fxRates]);
 
   const nameQ = nameQuery.trim().toLowerCase();
 
@@ -1485,12 +1543,12 @@ export default function Sidebar({
   // in a separate section and excluded from Revenue/Expense P&L totals.
   const purchases = displayedReceipts.filter((r) => r.receipt_type === "purchase" && !CASHFLOW_ONLY_CATS.has(r.category));
   const sales      = displayedReceipts.filter((r) => r.receipt_type === "sale"     && !CASHFLOW_ONLY_CATS.has(r.category));
-  const purchaseTotal = purchases.reduce((s, r) => s + (r.total_amount ?? 0), 0);
-  const saleTotal     = sales.reduce((s, r) => s + (r.total_amount ?? 0), 0);
+  const purchaseTotal = purchases.reduce((s, r) => s + eurAmount(r, fxRates), 0);
+  const saleTotal     = sales.reduce((s, r) => s + eurAmount(r, fxRates), 0);
 
   const cashflowReceipts = displayedReceipts.filter((r) => CASHFLOW_ONLY_CATS.has(r.category));
   const cashflowTotal    = cashflowReceipts.reduce((s, r) => {
-    const signed = r.receipt_type === "sale" ? (r.total_amount ?? 0) : -(r.total_amount ?? 0);
+    const signed = r.receipt_type === "sale" ? eurAmount(r, fxRates) : -eurAmount(r, fxRates);
     return s + signed;
   }, 0);
 
@@ -1523,6 +1581,7 @@ export default function Sidebar({
         isOpen={!collapsed.has(`${type}-${cat}`)}
         selectedId={selectedId}
         confirmingId={confirmingId}
+        rates={fxRates}
         onToggle={() => toggle(`${type}-${cat}`)}
         onSelect={onSelect}
         onDeleteClick={handleDeleteClick}
